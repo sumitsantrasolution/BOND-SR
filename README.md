@@ -1,5 +1,11 @@
-# **BOND SR**
+# Project Overview
+
+**BOND SR**
+
 *Private Premium 1-to-1 Communication Platform*
+
+![Firebase](https://img.shields.io/badge/Firebase-039BE5?style=for-the-badge&logo=Firebase&logoColor=white)
+![WebRTC](https://img.shields.io/badge/WebRTC-333333?style=for-the-badge&logo=webrtc&logoColor=white)
 
 The objective is to develop a private, premium-quality web-based communication platform designed exclusively for one-to-one interactions. Unlike traditional messaging applications, this platform focuses on privacy, simplicity, high-quality communication, and an exclusive user experience.
 
@@ -186,25 +192,42 @@ The platform must prioritize speed and responsiveness.
 ## Platform Scope
 ### Included
 ✅ One-to-One Chat
+
 ✅ Audio Calling
+
 ✅ Video Calling
+
 ✅ Video Presence Mode (Discrete Video-Only)
+
 ✅ Photo Sharing
+
 ✅ Video Sharing
+
 ✅ Profile Customization
+
 ✅ Invitation-Based Access
+
 ✅ Permanent User Identity
+
 ✅ Media Auto Deletion
+
 ✅ Premium User Experience
 
 ### Excluded
 ❌ Registration
+
 ❌ Login
+
 ❌ Friend Requests
+
 ❌ Friend Lists
+
 ❌ Group Chats
+
 ❌ Public Discovery
+
 ❌ Community Features
+
 ❌ Social Networking Features
 
 ## Product Vision
