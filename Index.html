@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>BOND SR</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:'Inter',sans-serif;
+}
+
+body{
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+overflow:hidden;
+background:#050505;
+position:relative;
+}
+
+/* Animated Background */
+
+.bg{
+position:absolute;
+width:100%;
+height:100%;
+overflow:hidden;
+z-index:0;
+}
+
+.circle{
+position:absolute;
+border-radius:50%;
+filter:blur(100px);
+animation:float 12s infinite ease-in-out;
+}
+
+.circle1{
+width:300px;
+height:300px;
+background:#7c3aed;
+top:-80px;
+left:-80px;
+}
+
+.circle2{
+width:350px;
+height:350px;
+background:#2563eb;
+bottom:-120px;
+right:-120px;
+animation-delay:2s;
+}
+
+.circle3{
+width:250px;
+height:250px;
+background:#9333ea;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+animation-delay:4s;
+}
+
+@keyframes float{
+0%,100%{
+transform:translateY(0px);
+}
+50%{
+transform:translateY(-40px);
+}
+}
+
+/* Card */
+
+.card{
+position:relative;
+z-index:2;
+
+width:90%;
+max-width:420px;
+
+padding:40px 30px;
+
+border-radius:28px;
+
+background:rgba(255,255,255,.05);
+
+backdrop-filter:blur(25px);
+
+border:1px solid rgba(255,255,255,.08);
+
+box-shadow:
+0 20px 60px rgba(0,0,0,.45);
+
+text-align:center;
+}
+
+/* Logo */
+
+.logo{
+font-size:38px;
+font-weight:700;
+letter-spacing:4px;
+color:#fff;
+margin-bottom:10px;
+}
+
+.subtitle{
+color:rgba(255,255,255,.65);
+font-size:14px;
+margin-bottom:35px;
+}
+
+/* Input */
+
+.input-group{
+position:relative;
+}
+
+input{
+width:100%;
+height:60px;
+
+background:rgba(255,255,255,.05);
+
+border:1px solid rgba(255,255,255,.08);
+
+border-radius:18px;
+
+outline:none;
+
+color:#fff;
+font-size:18px;
+font-weight:500;
+
+padding:0 20px;
+text-align:center;
+
+transition:.3s;
+}
+
+input:focus{
+border-color:#8b5cf6;
+
+box-shadow:
+0 0 0 3px rgba(139,92,246,.15),
+0 0 25px rgba(139,92,246,.35);
+}
+
+input::placeholder{
+color:rgba(255,255,255,.4);
+}
+
+/* Button */
+
+button{
+width:100%;
+height:60px;
+
+margin-top:18px;
+
+border:none;
+border-radius:18px;
+
+cursor:pointer;
+
+font-size:16px;
+font-weight:600;
+letter-spacing:1px;
+
+color:white;
+
+background:linear-gradient(
+135deg,
+#7c3aed,
+#2563eb
+);
+
+transition:.3s;
+}
+
+button:hover{
+transform:translateY(-2px);
+
+box-shadow:
+0 12px 30px rgba(124,58,237,.35);
+}
+
+button:active{
+transform:scale(.98);
+}
+
+/* Updated Footer */
+
+.footer{
+    margin-top:25px;
+    text-align:center;
+    color:rgba(255,255,255,.55);
+    font-size:12px;
+    line-height:1.8;
+    letter-spacing:.5px;
+}
+
+.footer div:first-child{
+    color:#ffffff;
+    font-weight:600;
+}
+
+.footer div:last-child{
+    font-size:11px;
+    opacity:.8;
+}
+
+.error{
+margin-top:15px;
+color:#ff4d6d;
+font-size:13px;
+display:none;
+}
+
+/* Mobile */
+
+@media(max-width:480px){
+
+.card{
+padding:35px 22px;
+}
+
+.logo{
+font-size:32px;
+}
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="bg">
+<div class="circle circle1"></div>
+<div class="circle circle2"></div>
+<div class="circle circle3"></div>
+</div>
+
+<div class="card">
+
+<div class="logo">BOND SR</div>
+
+<div class="subtitle">
+Private Access Room
+</div>
+
+<div class="input-group">
+
+<input
+type="text"
+id="roomCode"
+placeholder="Private Access Key"
+autocomplete="off">
+
+</div>
+
+<button onclick="enterRoom()">
+ENTER ROOM
+</button>
+
+<div class="error" id="error">
+Access Denied
+</div>
+
+<div class="footer">
+    <div>© 2026 BOND SR</div>
+    <div>Developed & Owned by sumitsantrasolution</div>
+    <div>All Rights Reserved</div>
+</div>
+
+</div>
+
+<script>
+
+const ROOM_CODE = "SR";
+
+function enterRoom(){
+
+const code =
+document.getElementById("roomCode")
+.value
+.trim();
+
+if(code === ROOM_CODE){
+
+sessionStorage.setItem(
+"bond_access",
+"true"
+);
+
+window.location.href =
+"pages/chat.html";
+
+}else{
+
+document.getElementById("error")
+.style.display = "block";
+
+}
+
+}
+
+document
+.getElementById("roomCode")
+.addEventListener("keypress",function(e){
+
+if(e.key==="Enter"){
+enterRoom();
+}
+
+});
+
+// ভুল পাসওয়ার্ড দেওয়ার পর আবার টাইপ করা শুরু করলেই এরর মেসেজটি হাইড হয়ে যাবে
+document.getElementById("roomCode").addEventListener("input", function() {
+    document.getElementById("error").style.display = "none";
+});
+
+</script>
+
+</body>
+  </html>
+  
