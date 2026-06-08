@@ -1,1 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fluid VIP Call UI - Fixed</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
 
+        body {
+            background-color: #000000;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- মর্ফিং কন্টেইনার --- */
+        .morph-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 50px;
+            background-color: #111111;
+            border-radius: 25px;
+            border: 1px solid #222222;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .morph-container.expanded {
+            width: 90%;
+            max-width: 380px;
+            height: 80vh;
+            max-height: 700px;
+            border-radius: 40px;
+            background-color: #050505;
+            border: 1px solid #1a1a1a;
+            cursor: default;
+        }
+
+        /* --- পিল ভিউ --- */
+        .pill-view {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            justify-content: center;
+            transition: opacity 0.3s ease;
+        }
+
+        .morph-container.expanded .pill-view {
+            opacity: 0;
+            pointer-events: none;
+            position: absolute;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #10b981;
+            border-radius: 50%;
+            animation: pulseFast 1s infinite alternate;
+        }
+
+        @keyframes pulseFast {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0.5; }
+        }
+
+        .pill-text {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- ফুল স্ক্রিন ভিউ --- */
+        .full-view {
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 50px 20px;
+            pointer-events: none;
+            transition: opacity 0.4s ease 0.3s;
+        }
+
+        .morph-container.expanded .full-view {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .caller-info {
+            text-align: center;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .avatar-box {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            margin-bottom: 25px;
+            border: 2px solid #10b981;
+            padding: 4px;
+            background-color: #000;
+            transition: border-color 0.3s ease;
+        }
+
+        .avatar-img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .caller-name {
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .call-status {
+            color: #10b981;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .timer-display {
+            font-size: 18px;
+            color: #ffffff;
+            font-family: monospace;
+            letter-spacing: 2px;
+            display: none;
+            margin-top: 10px;
+        }
+
+        /* --- বাটন এরিয়া --- */
+        /* ইনিশিয়াল রিসিভ/ডিক্লাইন বাটন কন্টেইনার */
+        .action-area {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            width: 100%;
+            padding: 0 10px 20px;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* কল চলাকালীন এন্ড কল বাটন কন্টেইনার */
+        .connected-area {
+            display: none; /* শুরুতে লুকানো থাকবে */
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            padding: 0 10px 20px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .btn-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .action-btn {
+            width: 75px;
+            height: 75px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px;
+            cursor: pointer;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+
+        .action-btn:active {
+            transform: scale(0.9);
+        }
+
+        .btn-decline {
+            background-color: #1f0808;
+            color: #ef4444;
+            border: 1px solid #3b0f0f;
+        }
+
+        .btn-decline:active {
+            background-color: #ef4444;
+            color: #ffffff;
+        }
+
+        .btn-accept {
+            background-color: #062b1a;
+            color: #10b981;
+            border: 1px solid #0d4a2f;
+        }
+
+        .btn-accept:active {
+            background-color: #10b981;
+            color: #ffffff;
+        }
+
+        .btn-label {
+            color: #737373;
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="morph-container" id="morphContainer">
+        
+        <div class="pill-view" id="pillView">
+            <div class="pulse-dot"></div>
+            <span class="pill-text">Incoming Call...</span>
+        </div>
+
+        <div class="full-view">
+            <div class="caller-info">
+                <div class="avatar-box" id="avatarBox">
+                    <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
+                </div>
+                <h1 class="caller-name">Sumit</h1>
+                <p class="call-status" id="callStatusText">Secure Connection</p>
+                <div class="timer-display" id="timerDisplay">00:00</div>
+            </div>
+
+            <div class="action-area" id="actionArea">
+                <div class="btn-wrapper">
+                    <button class="action-btn btn-decline" id="declineBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <span class="btn-label">Decline</span>
+                </div>
+
+                <div class="btn-wrapper">
+                    <button class="action-btn btn-accept" id="acceptBtn">
+                        <i class="fas fa-check"></i>
+                    </button>
+                    <span class="btn-label">Accept</span>
+                </div>
+            </div>
+
+            <div class="connected-area" id="connectedArea">
+                <div class="btn-wrapper">
+                    <button class="action-btn btn-decline" id="endCallBtn">
+                        <i class="fas fa-phone-slash"></i>
+                    </button>
+                    <span class="btn-label">End Call</span>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const morphContainer = document.getElementById('morphContainer');
+            const pillView = document.getElementById('pillView');
+            const avatarBox = document.getElementById('avatarBox');
+            
+            // বাটনসমূহ
+            const acceptBtn = document.getElementById('acceptBtn');
+            const declineBtn = document.getElementById('declineBtn');
+            const endCallBtn = document.getElementById('endCallBtn');
+            
+            // টেক্সট এবং এরিয়া
+            const callStatusText = document.getElementById('callStatusText');
+            const timerDisplay = document.getElementById('timerDisplay');
+            const actionArea = document.getElementById('actionArea');
+            const connectedArea = document.getElementById('connectedArea');
+
+            let timerInterval;
+
+            // ১. পিল এ ক্লিক করলে স্ক্রিন বড় হবে
+            pillView.addEventListener('click', (e) => {
+                e.stopPropagation();
+                morphContainer.classList.add('expanded');
+            });
+
+            // ২. কল রিসিভ (Accept) করলে যা হবে
+            acceptBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                callStatusText.textContent = "CONNECTED";
+                callStatusText.style.color = "#ffffff";
+                avatarBox.style.borderColor = "#ffffff";
+                
+                // রিসিভ/ডিক্লাইন বাটনগুলো হাইড করা
+                actionArea.style.opacity = '0';
+                actionArea.style.transform = 'translateY(20px)';
+                actionArea.style.pointerEvents = 'none';
+                
+                setTimeout(() => {
+                    actionArea.style.display = 'none';
+                    
+                    // মাঝখানে End Call বাটন শো করা
+                    connectedArea.style.display = 'flex';
+                    // সামান্য ডিলে দিয়ে অপাসিটি আনলে স্মুথ দেখাবে
+                    setTimeout(() => {
+                        connectedArea.style.opacity = '1';
+                        connectedArea.style.transform = 'translateY(0)';
+                    }, 50);
+                }, 300);
+                
+                // টাইমার শুরু করা
+                timerDisplay.style.display = 'block';
+                let seconds = 0;
+                timerInterval = setInterval(() => {
+                    seconds++;
+                    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+                    const secs = String(seconds % 60).padStart(2, '0');
+                    timerDisplay.textContent = `${mins}:${secs}`;
+                }, 1000);
+            });
+
+            // কল কেটে দেওয়ার কমন ফাংশন (Decline এবং End Call উভয়ের জন্য)
+            const terminateCall = (e) => {
+                e.stopPropagation();
+                clearInterval(timerInterval);
+                
+                callStatusText.textContent = "CALL ENDED";
+                callStatusText.style.color = "#ef4444";
+                timerDisplay.style.display = 'none';
+                avatarBox.style.borderColor = "#ef4444";
+                
+                // যে বাটনগুলো স্ক্রিনে আছে সেগুলোকে ডিজেবল করা
+                actionArea.style.opacity = '0.3';
+                connectedArea.style.opacity = '0.3';
+                actionArea.style.pointerEvents = 'none';
+                connectedArea.style.pointerEvents = 'none';
+
+                // ২ সেকেন্ড পর আবার পিল মোডে ফিরে যাওয়া এবং সবকিছু রিসেট করা
+                setTimeout(() => {
+                    morphContainer.classList.remove('expanded');
+                    
+                    // অ্যানিমেশন শেষ হওয়ার পর ভেতরের জিনিসগুলো রিসেট
+                    setTimeout(() => {
+                        callStatusText.textContent = "Secure Connection";
+                        callStatusText.style.color = "#10b981";
+                        avatarBox.style.borderColor = "#10b981";
+                        
+                        // বাটন এরিয়া রিসেট
+                        connectedArea.style.display = 'none';
+                        connectedArea.style.opacity = '0';
+                        connectedArea.style.transform = 'translateY(20px)';
+                        
+                        actionArea.style.display = 'flex';
+                        actionArea.style.opacity = '1';
+                        actionArea.style.transform = 'translateY(0)';
+                        
+                        actionArea.style.pointerEvents = 'auto';
+                        connectedArea.style.pointerEvents = 'auto';
+                        timerDisplay.textContent = "00:00";
+                    }, 700);
+                }, 1500);
+            };
+
+            // ৩. Decline বাটনে ক্লিক
+            declineBtn.addEventListener('click', terminateCall);
+
+            // ৪. End Call বাটনে ক্লিক (কল চলাকালীন)
+            endCallBtn.addEventListener('click', terminateCall);
+        });
+    </script>
+</body>
+  </html>
+  
