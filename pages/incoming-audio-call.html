@@ -245,6 +245,8 @@
 </head>
 <body>
 
+    <audio id="remoteAudio" autoplay></audio>
+
     <div class="morph-container" id="morphContainer">
         
         <div class="pill-view" id="pillView">
@@ -255,10 +257,10 @@
         <div class="full-view">
             <div class="caller-info">
                 <div class="avatar-box" id="avatarBox">
-                    <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
+                    <img id="partnerPhoto" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
                 </div>
-                <h1 class="caller-name">Sumit</h1>
-                <p class="call-status" id="callStatusText">Secure Connection</p>
+                <h1 class="caller-name" id="partnerName">Sumit</h1>
+                <p class="call-status" id="callStatusText">Incoming Audio Call</p>
                 <div class="timer-display" id="timerDisplay">00:00</div>
             </div>
 
@@ -290,24 +292,62 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"; 
+        import { getFirestore, doc, onSnapshot, updateDoc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js"; 
+        
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow", 
+            authDomain: "bond-rs.firebaseapp.com", 
+            projectId: "bond-rs", 
+            storageBucket: "bond-rs.firebasestorage.app", 
+            messagingSenderId: "224682992857", 
+            appId: "1:224682992857:web:6e4946b905606217758ac8" 
+        }; 
+        
+        const app = initializeApp(firebaseConfig); 
+        const db = getFirestore(app);
+
+        const CALLER_USER = "SUMIT"; // যে কল করছে
+        const callDocRef = doc(db, "calls", "currentCall");
+
+        // WebRTC Config
+        const servers = {
+            iceServers: [
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+            ]
+        };
+
+        let pc = new RTCPeerConnection(servers);
+        let localStream = null;
+        let remoteStream = new MediaStream();
+
         document.addEventListener('DOMContentLoaded', () => {
             const morphContainer = document.getElementById('morphContainer');
             const pillView = document.getElementById('pillView');
             const avatarBox = document.getElementById('avatarBox');
             
-            // বাটনসমূহ
             const acceptBtn = document.getElementById('acceptBtn');
             const declineBtn = document.getElementById('declineBtn');
             const endCallBtn = document.getElementById('endCallBtn');
             
-            // টেক্সট এবং এরিয়া
             const callStatusText = document.getElementById('callStatusText');
             const timerDisplay = document.getElementById('timerDisplay');
             const actionArea = document.getElementById('actionArea');
             const connectedArea = document.getElementById('connectedArea');
+            const remoteAudio = document.getElementById('remoteAudio');
 
             let timerInterval;
+            let isEnding = false;
+
+            // পার্টনারের নাম ও ছবি লোড করা (যিনি কল করছেন)
+            getDoc(doc(db, "users", CALLER_USER)).then((userSnap) => {
+                if(userSnap.exists()) {
+                    const data = userSnap.data();
+                    document.getElementById('partnerName').textContent = data.name || CALLER_USER;
+                    if(data.photo) document.getElementById('partnerPhoto').src = data.photo;
+                }
+            });
 
             // ১. পিল এ ক্লিক করলে স্ক্রিন বড় হবে
             pillView.addEventListener('click', (e) => {
@@ -315,10 +355,65 @@
                 morphContainer.classList.add('expanded');
             });
 
-            // ২. কল রিসিভ (Accept) করলে যা হবে
-            acceptBtn.addEventListener('click', (e) => {
+            // কল কেটে দেওয়ার কমন ফাংশন
+            const terminateCall = async (e) => {
+                if(e) e.stopPropagation();
+                if(isEnding) return;
+                isEnding = true;
+
+                clearInterval(timerInterval);
+                
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                if (pc) {
+                    pc.close();
+                }
+
+                callStatusText.textContent = "CALL ENDED";
+                callStatusText.style.color = "#ef4444";
+                timerDisplay.style.display = 'none';
+                avatarBox.style.borderColor = "#ef4444";
+                
+                actionArea.style.opacity = '0.3';
+                connectedArea.style.opacity = '0.3';
+                actionArea.style.pointerEvents = 'none';
+                connectedArea.style.pointerEvents = 'none';
+
+                try {
+                    await updateDoc(callDocRef, {
+                        status: "idle",
+                        caller: "none",
+                        receiver: "none",
+                        type: "none"
+                    });
+                } catch(err) { console.error(err); }
+
+                // কল কাটার পর চ্যাট পেজে ফিরে যাওয়া
+                setTimeout(() => {
+                    window.location.href = "chat.html";
+                }, 1500);
+            };
+
+            // ৩. Decline বাটনে ক্লিক
+            declineBtn.addEventListener('click', terminateCall);
+            // ৪. End Call বাটনে ক্লিক
+            endCallBtn.addEventListener('click', terminateCall);
+
+            // অপরজন (Caller) যদি কল কেটে দেয়, তবে লিসেনার তা ধরে ফেলবে
+            onSnapshot(callDocRef, (snap) => {
+                if(!snap.exists() || isEnding) return;
+                const data = snap.data();
+                if(data.status === "idle" || data.status === "none") {
+                    terminateCall(); // Caller কল কাটলে রিসিভারেরও কল কেটে চ্যাটে ব্যাক করবে
+                }
+            });
+
+            // ২. কল রিসিভ (Accept) করলে WebRTC সেটআপ শুরু হবে
+            acceptBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                callStatusText.textContent = "CONNECTED";
+                
+                callStatusText.textContent = "CONNECTING...";
                 callStatusText.style.color = "#ffffff";
                 avatarBox.style.borderColor = "#ffffff";
                 
@@ -329,17 +424,74 @@
                 
                 setTimeout(() => {
                     actionArea.style.display = 'none';
-                    
-                    // মাঝখানে End Call বাটন শো করা
                     connectedArea.style.display = 'flex';
-                    // সামান্য ডিলে দিয়ে অপাসিটি আনলে স্মুথ দেখাবে
                     setTimeout(() => {
                         connectedArea.style.opacity = '1';
                         connectedArea.style.transform = 'translateY(0)';
                     }, 50);
                 }, 300);
+
+                // ==========================================
+                // WebRTC Answer Logic
+                // ==========================================
+                try {
+                    // মাইক্রোফোন এক্সেস নেওয়া
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    localStream.getTracks().forEach((track) => {
+                        pc.addTrack(track, localStream);
+                    });
+                } catch (error) {
+                    console.error("Microphone access failed:", error);
+                }
+
+                pc.ontrack = (event) => {
+                    event.streams[0].getTracks().forEach((track) => {
+                        remoteStream.addTrack(track);
+                    });
+                    remoteAudio.srcObject = remoteStream; // Caller এর কথা শোনা যাবে
+                };
+
+                // রিসিভারের ICE Candidates ডেটাবেসে পাঠানো
+                const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        addDoc(receiverCandidatesCollection, event.candidate.toJSON());
+                    }
+                };
+
+                // Caller-এর Offer ডেটাবেস থেকে পড়া এবং Answer তৈরি করা
+                const callDoc = await getDoc(callDocRef);
+                const callData = callDoc.data();
                 
-                // টাইমার শুরু করা
+                if (callData.offer) {
+                    const offerDescription = new RTCSessionDescription(callData.offer);
+                    await pc.setRemoteDescription(offerDescription);
+
+                    const answerDescription = await pc.createAnswer();
+                    await pc.setLocalDescription(answerDescription);
+
+                    const answer = {
+                        type: answerDescription.type,
+                        sdp: answerDescription.sdp,
+                    };
+                    
+                    // ডেটাবেসে Answer এবং status: "accepted" আপডেট করা
+                    await updateDoc(callDocRef, { answer, status: "accepted" });
+                }
+
+                // Caller-এর ICE Candidates রিসিভ করা
+                const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
+                onSnapshot(callerCandidatesCollection, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added") {
+                            const candidate = new RTCIceCandidate(change.doc.data());
+                            pc.addIceCandidate(candidate);
+                        }
+                    });
+                });
+
+                // কানেকশন হওয়ার পর টাইমার শুরু করা
+                callStatusText.textContent = "CONNECTED";
                 timerDisplay.style.display = 'block';
                 let seconds = 0;
                 timerInterval = setInterval(() => {
@@ -349,56 +501,7 @@
                     timerDisplay.textContent = `${mins}:${secs}`;
                 }, 1000);
             });
-
-            // কল কেটে দেওয়ার কমন ফাংশন (Decline এবং End Call উভয়ের জন্য)
-            const terminateCall = (e) => {
-                e.stopPropagation();
-                clearInterval(timerInterval);
-                
-                callStatusText.textContent = "CALL ENDED";
-                callStatusText.style.color = "#ef4444";
-                timerDisplay.style.display = 'none';
-                avatarBox.style.borderColor = "#ef4444";
-                
-                // যে বাটনগুলো স্ক্রিনে আছে সেগুলোকে ডিজেবল করা
-                actionArea.style.opacity = '0.3';
-                connectedArea.style.opacity = '0.3';
-                actionArea.style.pointerEvents = 'none';
-                connectedArea.style.pointerEvents = 'none';
-
-                // ২ সেকেন্ড পর আবার পিল মোডে ফিরে যাওয়া এবং সবকিছু রিসেট করা
-                setTimeout(() => {
-                    morphContainer.classList.remove('expanded');
-                    
-                    // অ্যানিমেশন শেষ হওয়ার পর ভেতরের জিনিসগুলো রিসেট
-                    setTimeout(() => {
-                        callStatusText.textContent = "Secure Connection";
-                        callStatusText.style.color = "#10b981";
-                        avatarBox.style.borderColor = "#10b981";
-                        
-                        // বাটন এরিয়া রিসেট
-                        connectedArea.style.display = 'none';
-                        connectedArea.style.opacity = '0';
-                        connectedArea.style.transform = 'translateY(20px)';
-                        
-                        actionArea.style.display = 'flex';
-                        actionArea.style.opacity = '1';
-                        actionArea.style.transform = 'translateY(0)';
-                        
-                        actionArea.style.pointerEvents = 'auto';
-                        connectedArea.style.pointerEvents = 'auto';
-                        timerDisplay.textContent = "00:00";
-                    }, 700);
-                }, 1500);
-            };
-
-            // ৩. Decline বাটনে ক্লিক
-            declineBtn.addEventListener('click', terminateCall);
-
-            // ৪. End Call বাটনে ক্লিক (কল চলাকালীন)
-            endCallBtn.addEventListener('click', terminateCall);
         });
     </script>
 </body>
-  </html>
-  
+</html>
