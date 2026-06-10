@@ -394,10 +394,10 @@
             <div class="full-view">
                 <div class="caller-info">
                     <div class="avatar-box">
-                        <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
+                        <img id="partnerPhoto" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
                     </div>
-                    <h1 class="caller-name">Sumit</h1>
-                    <p class="call-status">Incoming Video Call</p>
+                    <h1 class="caller-name" id="partnerName">Sumit</h1>
+                    <p class="call-status" id="callStatusText">Incoming Video Call</p>
                 </div>
 
                 <div class="action-area">
@@ -433,7 +433,7 @@
         </div>
 
         <div class="top-overlay">
-            <h2 class="active-caller-name">Sumit</h2>
+            <h2 class="active-caller-name" id="activePartnerName">Sumit</h2>
             <div class="call-timer">
                 <span class="live-dot"></span>
                 <span id="activeTimer">00:00</span>
@@ -451,7 +451,36 @@
 
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"; 
+        import { getFirestore, doc, onSnapshot, updateDoc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js"; 
+        
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow", 
+            authDomain: "bond-rs.firebaseapp.com", 
+            projectId: "bond-rs", 
+            storageBucket: "bond-rs.firebasestorage.app", 
+            messagingSenderId: "224682992857", 
+            appId: "1:224682992857:web:6e4946b905606217758ac8" 
+        }; 
+        
+        const app = initializeApp(firebaseConfig); 
+        const db = getFirestore(app);
+
+        const CALLER_USER = "SUMIT"; // যে কল করছে
+        const callDocRef = doc(db, "calls", "currentCall");
+
+        // WebRTC Config
+        const servers = {
+            iceServers: [
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+            ]
+        };
+
+        let pc = new RTCPeerConnection(servers);
+        let localStream = null;
+        let remoteStream = new MediaStream();
+
         document.addEventListener('DOMContentLoaded', () => {
             // ইনকামিং এলিমেন্ট
             const incomingWrapper = document.getElementById('incomingWrapper');
@@ -459,12 +488,14 @@
             const pillView = document.getElementById('pillView');
             const acceptBtn = document.getElementById('acceptBtn');
             const declineBtn = document.getElementById('declineBtn');
+            const callStatusText = document.getElementById('callStatusText');
 
             // অ্যাক্টিভ ভিডিও এলিমেন্ট
             const activeVideoContainer = document.getElementById('activeVideoContainer');
             const activeTimer = document.getElementById('activeTimer');
             const hangupCallBtn = document.getElementById('hangupCallBtn');
             const localVideo = document.getElementById('localVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
             
             // ডক কন্ট্রোলস
             const micBtn = document.getElementById('micBtn');
@@ -476,7 +507,17 @@
 
             let callTimerInterval;
             let seconds = 0;
-            let localStream = null; // ক্যামেরা স্ট্রিম হোল্ড করার ভেরিয়েবল
+            let isEnding = false;
+
+            // পার্টনারের প্রোফাইল লোড (যিনি কল করছেন)
+            getDoc(doc(db, "users", CALLER_USER)).then((userSnap) => {
+                if(userSnap.exists()) {
+                    const data = userSnap.data();
+                    document.getElementById('partnerName').textContent = data.name || CALLER_USER;
+                    document.getElementById('activePartnerName').textContent = data.name || CALLER_USER;
+                    if(data.photo) document.getElementById('partnerPhoto').src = data.photo;
+                }
+            });
 
             // ১. পিল এ ক্লিক ইভেন্ট
             pillView.addEventListener('click', (e) => {
@@ -484,47 +525,86 @@
                 morphContainer.classList.add('expanded');
             });
 
+            // কল কেটে দেওয়ার কমন ফাংশন (Decline, Hangup এবং অপরজন কাটলে)
+            const terminateCall = async (e) => {
+                if(e) e.stopPropagation();
+                if(isEnding) return;
+                isEnding = true;
+
+                clearInterval(callTimerInterval);
+                
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                if (pc) {
+                    pc.close();
+                }
+
+                callStatusText.textContent = "CALL ENDED";
+                callStatusText.style.color = "#ef4444";
+                activeTimer.textContent = "ENDED";
+                activeTimer.style.color = "#ef4444";
+
+                try {
+                    await updateDoc(callDocRef, {
+                        status: "idle",
+                        caller: "none",
+                        receiver: "none",
+                        type: "none"
+                    });
+                } catch(err) { console.error(err); }
+
+                // চ্যাটে রিডাইরেক্ট
+                setTimeout(() => {
+                    window.location.href = "chat.html";
+                }, 1500);
+            };
+
             // ২. ডিক্লাইন বাটন ক্লিক ইভেন্ট
-            declineBtn.addEventListener('click', (e) => {
+            declineBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                morphContainer.classList.remove('expanded');
+                callStatusText.textContent = "DECLINED";
+                callStatusText.style.color = "#ef4444";
+                try {
+                    await updateDoc(callDocRef, { status: "rejected" });
+                } catch(err) { console.error(err); }
+                
+                setTimeout(() => terminateCall(), 500);
             });
 
-            // ৩. ফ্রন্ট ক্যামেরা চালু করার ফাংশন
-            async function startLocalCamera() {
+            // অপরজন (Caller) কল কেটে দিলে লিসেনার
+            onSnapshot(callDocRef, (snap) => {
+                if(!snap.exists() || isEnding) return;
+                const data = snap.data();
+                if(data.status === "idle" || data.status === "none") {
+                    terminateCall();
+                }
+            });
+
+            // ৫. Accept বাটন ক্লিক (WebRTC Answer Setup)
+            acceptBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                callStatusText.textContent = "CONNECTING...";
+                
+                // প্রথমে ক্যামেরা পারমিশন প্রম্পট আসবে এবং ফ্রন্ট ক্যামেরা চালু হবে
                 try {
-                    // ফোনের ফ্রন্ট ক্যামেরা এবং অডিও রিকোয়েস্ট করা হচ্ছে
                     localStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: "user" }, // user মানে ফ্রন্ট ক্যামেরা
+                        video: { facingMode: "user" },
                         audio: true
                     });
-                    // ভিডিও ট্যাগে লাইভ ক্যামেরা ফিড জুড়ে দেওয়া হচ্ছে
                     localVideo.srcObject = localStream;
+
+                    // লোকাল স্ট্রিম PeerConnection এ যুক্ত করা
+                    localStream.getTracks().forEach((track) => {
+                        pc.addTrack(track, localStream);
+                    });
                 } catch (error) {
                     console.error("Camera access denied or failed:", error);
                     alert("ক্যামেরা এক্সেস পাওয়া যায়নি! অনুগ্রহ করে পারমিশন দিন।");
                 }
-            }
-
-            // ৪. ক্যামেরা এবং মাইক্রোফোন বন্ধ করার ফাংশন (রিসোর্স রিলিজ)
-            function stopLocalCamera() {
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                    localVideo.srcObject = null;
-                    localStream = null;
-                }
-            }
-
-            // ৫. Accept বাটন ক্লিক (লাইভ ক্যামেরা ট্রিগার)
-            acceptBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                
-                // প্রথমে ক্যামেরা পারমিশন প্রম্পট আসবে এবং ফ্রন্ট ক্যামেরা চালু হবে
-                await startLocalCamera();
                 
                 // ক্যামেরা অন হওয়ার পর ইউআই ট্রানজিশন হবে
                 incomingWrapper.style.opacity = '0';
-                
                 setTimeout(() => {
                     incomingWrapper.style.display = 'none';
                     activeVideoContainer.style.display = 'block';
@@ -541,37 +621,63 @@
                             activeTimer.textContent = `${mins}:${secs}`;
                         }, 1000);
 
-                        // [ডেভেলপার নোট]: আপনার WebRTC Signaling বা Peer Connection-এর কাজ এখানে শুরু করবেন।
-
                     }, 50);
                 }, 400);
-            });
 
-            // ৬. কল এন্ড বাটন ক্লিক (ক্যামেরা বন্ধ হবে)
-            hangupCallBtn.addEventListener('click', () => {
-                clearInterval(callTimerInterval);
-                activeTimer.textContent = "ENDED";
-                activeTimer.style.color = "#ef4444";
+                // ==========================================
+                // WebRTC Answer Logic Setup
+                // ==========================================
+
+                // Remote Stream (Caller's Video) আসলে তা রিসিভ করা
+                pc.ontrack = (event) => {
+                    event.streams[0].getTracks().forEach((track) => {
+                        remoteStream.addTrack(track);
+                    });
+                    remoteVideo.srcObject = remoteStream;
+                };
+
+                // রিসিভারের ICE Candidates ডেটাবেসে পাঠানো
+                const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        addDoc(receiverCandidatesCollection, event.candidate.toJSON());
+                    }
+                };
+
+                // Caller-এর Offer ডেটাবেস থেকে পড়া
+                const callDoc = await getDoc(callDocRef);
+                const callData = callDoc.data();
                 
-                // ক্যামেরা হার্ডওয়্যার বন্ধ করা হচ্ছে
-                stopLocalCamera();
+                if (callData.offer) {
+                    const offerDescription = new RTCSessionDescription(callData.offer);
+                    await pc.setRemoteDescription(offerDescription);
 
-                activeVideoContainer.style.opacity = '0';
+                    // Answer তৈরি করে ডেটাবেসে পাঠানো
+                    const answerDescription = await pc.createAnswer();
+                    await pc.setLocalDescription(answerDescription);
 
-                setTimeout(() => {
-                    activeVideoContainer.style.display = 'none';
-                    activeTimer.textContent = "00:00";
-                    activeTimer.style.color = "#10b981";
+                    const answer = {
+                        type: answerDescription.type,
+                        sdp: answerDescription.sdp,
+                    };
                     
-                    morphContainer.classList.remove('expanded');
-                    incomingWrapper.style.display = 'flex';
-                    
-                    setTimeout(() => {
-                        incomingWrapper.style.opacity = '1';
-                    }, 50);
-                    
-                }, 500);
+                    await updateDoc(callDocRef, { answer, status: "accepted" });
+                }
+
+                // Caller-এর ICE Candidates রিসিভ করা
+                const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
+                onSnapshot(callerCandidatesCollection, (snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === "added") {
+                            const candidate = new RTCIceCandidate(change.doc.data());
+                            pc.addIceCandidate(candidate);
+                        }
+                    });
+                });
             });
+
+            // ৬. কল এন্ড বাটন ক্লিক (ক্যামেরা বন্ধ হবে এবং চ্যাটে যাবে)
+            hangupCallBtn.addEventListener('click', terminateCall);
 
             // ৭. অডিও মিউট টগল
             let isMuted = false;
@@ -605,4 +711,14 @@
                 }
             });
 
-  
+            // ৯. ক্যামেরা ফ্লিপ ইন্ডিকেটর
+            flipBtn.addEventListener('click', () => {
+                flipBtn.style.transform = 'rotate(180deg)';
+                setTimeout(() => {
+                    flipBtn.style.transform = 'rotate(0deg)';
+                }, 300);
+            });
+        });
+    </script>
+</body>
+</html>
