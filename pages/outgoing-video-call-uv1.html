@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Outgoing Video Call</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #000000;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* =========================================
+           ১. CALLING SCREEN STYLES (The Fluid Box)
+           ========================================= */
+        #callingWrapper {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: opacity 0.5s ease;
+        }
+
+        .morph-container {
+            width: 180px;
+            height: 50px;
+            background-color: #111111;
+            border-radius: 25px;
+            border: 1px solid #222222;
+            overflow: hidden;
+            transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .morph-container.expanded {
+            width: 90%;
+            max-width: 380px;
+            height: 80vh;
+            max-height: 700px;
+            border-radius: 40px;
+            background-color: #050505;
+            border: 1px solid #1a1a1a;
+            cursor: default;
+        }
+
+        .pill-view {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            justify-content: center;
+            transition: opacity 0.3s ease;
+        }
+
+        .morph-container.expanded .pill-view {
+            opacity: 0;
+            pointer-events: none;
+            position: absolute;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #10b981;
+            border-radius: 50%;
+            animation: pulseFast 1s infinite alternate;
+        }
+
+        @keyframes pulseFast {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0.5; }
+        }
+
+        .pill-text {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .full-view {
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 50px 20px;
+            pointer-events: none;
+            transition: opacity 0.4s ease 0.3s;
+        }
+
+        .morph-container.expanded .full-view {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .caller-info {
+            text-align: center;
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .avatar-box {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            margin-bottom: 25px;
+            border: 2px solid #10b981;
+            padding: 4px;
+            background-color: #000;
+            animation: pulseAvatar 2s infinite;
+        }
+
+        @keyframes pulseAvatar {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .avatar-img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .caller-name {
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 400;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .call-status {
+            color: #10b981;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .action-area {
+            display: flex;
+            justify-content: center; /* সেন্টারে শুধু একটাই বাটন */
+            align-items: center;
+            width: 100%;
+            padding: 0 10px 20px;
+        }
+
+        .btn-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .action-btn {
+            width: 75px;
+            height: 75px;
+            border-radius: 50%;
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px;
+            cursor: pointer;
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+
+        .action-btn:active { transform: scale(0.9); }
+
+        .btn-decline {
+            background-color: #1f0808;
+            color: #ef4444;
+            border: 1px solid #3b0f0f;
+        }
+
+        .btn-label {
+            color: #737373;
+            font-size: 13px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* =========================================
+           ২. ACTIVE VIDEO SCREEN STYLES (Real Camera)
+           ========================================= */
+        #activeVideoContainer {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            width: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            background-color: #000000;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            border-left: 1px solid #111;
+            border-right: 1px solid #111;
+        }
+
+        .remote-video-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        #remoteVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background-color: #050505;
+        }
+
+        .local-video-pip {
+            position: absolute;
+            top: 40px;
+            right: 20px;
+            width: 110px;
+            height: 160px;
+            background-color: #111111;
+            border-radius: 16px;
+            overflow: hidden;
+            z-index: 10;
+            border: 1.5px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+        }
+
+        #localVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); 
+        }
+
+        .top-overlay {
+            position: absolute;
+            top: 40px;
+            left: 20px;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .active-caller-name {
+            color: #ffffff;
+            font-size: 22px;
+            font-weight: 500;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        .call-timer {
+            color: #10b981;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: monospace;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
+
+        .live-dot {
+            width: 6px;
+            height: 6px;
+            background-color: #10b981;
+            border-radius: 50%;
+            display: inline-block;
+            animation: blink 1s infinite alternate;
+        }
+
+        @keyframes blink {
+            0% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        .control-dock-container {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            width: 90%;
+            display: flex;
+            justify-content: center;
+        }
+
+        .control-dock {
+            background: rgba(15, 15, 18, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 12px 20px;
+            border-radius: 35px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+        }
+
+        .dock-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            border: none;
+            background-color: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .dock-btn:active { transform: scale(0.88); }
+
+        .dock-btn.disabled-state {
+            background-color: #ef4444;
+            color: #ffffff;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .dock-btn.btn-hangup {
+            background-color: #ef4444;
+            color: #ffffff;
+            width: 60px;
+            height: 60px;
+            font-size: 22px;
+            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.5);
+        }
+
+        .video-off-overlay {
+            position: absolute;
+            inset: 0;
+            background-color: #111;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: #555;
+            font-size: 24px;
+            z-index: 11;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="callingWrapper">
+        <div class="morph-container" id="morphContainer">
+            
+            <div class="pill-view" id="pillView">
+                <div class="pulse-dot"></div>
+                <span class="pill-text">Calling...</span>
+            </div>
+
+            <div class="full-view">
+                <div class="caller-info">
+                    <div class="avatar-box" id="avatarBox">
+                        <img id="partnerPhoto" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
+                    </div>
+                    <h1 class="caller-name" id="partnerName">Rubina</h1>
+                    <p class="call-status" id="callStatusText">Calling...</p>
+                </div>
+
+                <div class="action-area">
+                    <div class="btn-wrapper">
+                        <button class="action-btn btn-decline" id="cancelCallBtn">
+                            <i class="fas fa-phone-slash"></i>
+                        </button>
+                        <span class="btn-label">Cancel</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeVideoContainer">
+        
+        <div class="remote-video-container">
+            <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+
+        <div class="local-video-pip">
+            <div class="video-off-overlay" id="videoOffOverlay">
+                <i class="fas fa-video-slash"></i>
+            </div>
+            <video id="localVideo" autoplay playsinline muted></video>
+        </div>
+
+        <div class="top-overlay">
+            <h2 class="active-caller-name" id="activePartnerName">Rubina</h2>
+            <div class="call-timer">
+                <span class="live-dot"></span>
+                <span id="activeTimer">00:00</span>
+            </div>
+        </div>
+
+        <div class="control-dock-container">
+            <div class="control-dock">
+                <button class="dock-btn" id="micBtn"><i class="fas fa-microphone" id="micIcon"></i></button>
+                <button class="dock-btn" id="camBtn"><i class="fas fa-video" id="camIcon"></i></button>
+                <button class="dock-btn" id="flipBtn"><i class="fas fa-camera-rotate"></i></button>
+                <button class="dock-btn btn-hangup" id="hangupCallBtn"><i class="fas fa-phone-slash"></i></button>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"; 
+        import { getFirestore, doc, onSnapshot, updateDoc, getDoc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js"; 
+        
+        const firebaseConfig = { 
+            apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow", 
+            authDomain: "bond-rs.firebaseapp.com", 
+            projectId: "bond-rs", 
+            storageBucket: "bond-rs.firebasestorage.app", 
+            messagingSenderId: "224682992857", 
+            appId: "1:224682992857:web:6e4946b905606217758ac8" 
+        }; 
+        
+        const app = initializeApp(firebaseConfig); 
+        const db = getFirestore(app);
+
+        const OTHER_USER = "RUBINA";
+        const callDocRef = doc(db, "calls", "currentCall");
+
+        // WebRTC Configuration (Google STUN Servers)
+        const servers = {
+            iceServers: [
+                { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
+            ]
+        };
+
+        let pc = new RTCPeerConnection(servers);
+        let localStream = null;
+        let remoteStream = new MediaStream();
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const callingWrapper = document.getElementById('callingWrapper');
+            const morphContainer = document.getElementById('morphContainer');
+            const cancelCallBtn = document.getElementById('cancelCallBtn');
+            const callStatusText = document.getElementById('callStatusText');
+            
+            const activeVideoContainer = document.getElementById('activeVideoContainer');
+            const activeTimer = document.getElementById('activeTimer');
+            const hangupCallBtn = document.getElementById('hangupCallBtn');
+            const localVideo = document.getElementById('localVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
+            
+            const micBtn = document.getElementById('micBtn');
+            const camBtn = document.getElementById('camBtn');
+            const flipBtn = document.getElementById('flipBtn');
+            const micIcon = document.getElementById('micIcon');
+            const camIcon = document.getElementById('camIcon');
+            const videoOffOverlay = document.getElementById('videoOffOverlay');
+
+            let callTimerInterval;
+            let seconds = 0;
+            let isCallAccepted = false;
+
+            // ১. পেজ লোড হলেই কলিং স্ক্রিন বড় হবে
+            setTimeout(() => {
+                morphContainer.classList.add('expanded');
+            }, 200);
+
+            // ==========================================
+            // WebRTC: Initialize Caller Setup
+            // ==========================================
+            async function setupWebRTC() {
+                // ১. Local Camera চালু করা
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    localVideo.srcObject = localStream;
+
+                    // ২. Local Stream-এর ট্র্যাকগুলো PeerConnection-এ অ্যাড করা
+                    localStream.getTracks().forEach((track) => {
+                        pc.addTrack(track, localStream);
+                    });
+                } catch (error) {
+                    console.error("Camera access failed:", error);
+                }
+
+                // ৩. Remote Stream রিসিভ করার জন্য প্রস্তুত থাকা
+                pc.ontrack = (event) => {
+                    event.streams[0].getTracks().forEach((track) => {
+                        remoteStream.addTrack(track);
+                    });
+                    remoteVideo.srcObject = remoteStream; // অপরজনের ভিডিও প্লে হবে
+                };
+
+                // ৪. ICE Candidates কালেক্ট করা এবং ডেটাবেসে পাঠানো
+                const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        addDoc(callerCandidatesCollection, event.candidate.toJSON());
+                    }
+                };
+
+                // ৫. Offer (কলের রিকোয়েস্ট) তৈরি করে ডেটাবেসে পাঠানো
+                const offerDescription = await pc.createOffer();
+                await pc.setLocalDescription(offerDescription);
+                
+                const offer = {
+                    sdp: offerDescription.sdp,
+                    type: offerDescription.type,
+                };
+                await setDoc(callDocRef, { offer }, { merge: true });
+            }
+
+            // WebRTC স্টার্ট করা
+            setupWebRTC();
+
+            // ==========================================
+            // Firebase Listener: অপরজন কল ধরলে বা রিজেক্ট করলে
+            // ==========================================
+            onSnapshot(callDocRef, (snap) => {
+                if (!snap.exists()) return;
+                const call = snap.data();
+
+                // যদি Answer পাওয়া যায় (মানে অপরজন কল রিসিভ করেছে)
+                if (!pc.currentRemoteDescription && call.answer) {
+                    const answerDescription = new RTCSessionDescription(call.answer);
+                    pc.setRemoteDescription(answerDescription);
+                }
+
+                if (call.status === "accepted" && !isCallAccepted) {
+                    isCallAccepted = true;
+                    callStatusText.textContent = "CONNECTED";
+                    callStatusText.style.color = "#ffffff";
+                    
+                    // কলিং স্ক্রিন সরিয়ে লাইভ ভিডিও স্ক্রিন আনা
+                    callingWrapper.style.opacity = '0';
+                    setTimeout(() => {
+                        callingWrapper.style.display = 'none';
+                        activeVideoContainer.style.display = 'block';
+                        
+                        setTimeout(() => {
+                            activeVideoContainer.style.opacity = '1';
+                            
+                            // টাইমার শুরু
+                            seconds = 0;
+                            callTimerInterval = setInterval(() => {
+                                seconds++;
+                                const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+                                const secs = String(seconds % 60).padStart(2, '0');
+                                activeTimer.textContent = `${mins}:${secs}`;
+                            }, 1000);
+
+                        }, 50);
+                    }, 400);
+                } 
+                else if (call.status === "rejected" || call.status === "idle") {
+                    terminateCall(call.status);
+                }
+            });
+
+            // ৬. রিসিভারের পাঠানো ICE Candidates রিসিভ করা
+            const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
+            onSnapshot(receiverCandidatesCollection, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "added") {
+                        const candidate = new RTCIceCandidate(change.doc.data());
+                        pc.addIceCandidate(candidate);
+                    }
+                });
+            });
+
+            // ==========================================
+            // Call Termination Logic
+            // ==========================================
+            function terminateCall(statusType = "idle") {
+                clearInterval(callTimerInterval);
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                if (pc) {
+                    pc.close();
+                }
+                
+                if(!isCallAccepted) {
+                    callStatusText.textContent = statusType === "rejected" ? "CALL DECLINED" : "CALL ENDED";
+                    callStatusText.style.color = "#ef4444";
+                } else {
+                    activeTimer.textContent = "ENDED";
+                    activeTimer.style.color = "#ef4444";
+                }
+
+                setTimeout(() => { 
+                    window.history.back(); 
+                }, 1500);
+            }
+
+            async function endCallProcess() {
+                terminateCall("idle");
+                try {
+                    await updateDoc(callDocRef, { 
+                        status: "idle", 
+                        caller: "none", 
+                        receiver: "none", 
+                        type: "none" 
+                    });
+                } catch(err) { console.error(err); }
+            }
+
+            cancelCallBtn.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                endCallProcess(); 
+            });
+            hangupCallBtn.addEventListener('click', endCallProcess);
+
+            // ==========================================
+            // Media Controls (Mic & Cam)
+            // ==========================================
+            let isMuted = false;
+            micBtn.addEventListener('click', () => {
+                isMuted = !isMuted;
+                if(localStream) localStream.getAudioTracks()[0].enabled = !isMuted;
+                micBtn.classList.toggle('disabled-state');
+                micIcon.className = isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+            });
+
+            let isCamOff = false;
+            camBtn.addEventListener('click', () => {
+                isCamOff = !isCamOff;
+                if(localStream) localStream.getVideoTracks()[0].enabled = !isCamOff;
+                camBtn.classList.toggle('disabled-state');
+                camIcon.className = isCamOff ? 'fas fa-video-slash' : 'fas fa-video';
+                videoOffOverlay.style.display = isCamOff ? 'flex' : 'none';
+            });
+
+            flipBtn.addEventListener('click', () => {
+                flipBtn.style.transform = 'rotate(180deg)';
+                setTimeout(() => { flipBtn.style.transform = 'rotate(0deg)'; }, 300);
+            });
+
+            // Load Partner Profile
+            getDoc(doc(db, "users", OTHER_USER)).then((userSnap) => {
+                if(userSnap.exists()) {
+                    const data = userSnap.data();
+                    document.getElementById('partnerName').textContent = data.name || OTHER_USER;
+                    document.getElementById('activePartnerName').textContent = data.name || OTHER_USER;
+                    if(data.photo) document.getElementById('partnerPhoto').src = data.photo;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
