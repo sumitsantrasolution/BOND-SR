@@ -1,1 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>BOND SR - Video Presence</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
 
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+body {
+    background: #000; height: 100vh; width: 100vw;
+    overflow: hidden; color: #fff; position: relative;
+}
+
+/* Remote Video */
+.remote-video-container {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: #0a0a0a; z-index: 1; display: flex; align-items: center; justify-content: center;
+}
+.remote-video {
+    width: 100%; height: 100%; object-fit: cover;
+}
+.remote-cam-off-msg {
+    position: absolute; display: none; flex-direction: column; align-items: center; gap: 10px; color: #9ca3af;
+}
+.remote-cam-off-msg span.icon { font-size: 48px; color: #4b5563; }
+
+/* Local Video (PIP) */
+.local-video-container {
+    position: absolute; bottom: 120px; right: 20px; width: 110px; height: 160px;
+    background: #222; border-radius: 16px; overflow: hidden; z-index: 10;
+    border: 2px solid rgba(255, 255, 255, 0.2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.local-video {
+    width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background: #333; 
+}
+
+/* Top Glass Header */
+.header-glass {
+    position: absolute; top: 0; left: 0; right: 0; height: 90px;
+    padding: 40px 20px 15px 20px; display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%); z-index: 10;
+}
+
+.user-info { display: flex; align-items: center; gap: 12px; }
+.back-btn {
+    width: 40px; height: 40px; border: none; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px);
+    color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.name-status { display: flex; flex-direction: column; }
+.user-name { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
+
+/* Connection Status Update */
+.presence-badge {
+    display: flex; align-items: center; gap: 4px; font-size: 11px;
+    color: #eab308; font-weight: 500; margin-top: 2px;
+}
+.presence-badge span.material-symbols-outlined { font-size: 12px; }
+
+.security-badge {
+    background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+    padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: #9ca3af;
+}
+.security-badge span { font-size: 14px; color: #ef4444; }
+
+/* Bottom Controls */
+.controls-glass {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 20px; background: rgba(30, 30, 30, 0.6);
+    backdrop-filter: blur(25px); padding: 12px 24px; border-radius: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.08); z-index: 10;
+}
+.control-btn {
+    width: 50px; height: 50px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.1);
+    color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s;
+}
+.control-btn:active { transform: scale(0.9); }
+.control-btn.active { background: rgba(255, 255, 255, 0.25); }
+.control-btn span { font-size: 24px; }
+
+.end-btn {
+    width: 60px; height: 60px; border-radius: 50%; border: none; background: #ef4444; color: #fff;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+}
+.end-btn:active { transform: scale(0.9); }
+.end-btn span { font-size: 28px; }
+</style>
+</head>
+<body>
+
+<div class="remote-video-container">
+    <video class="remote-video" autoplay playsinline id="remoteVideo"></video>
+    <div class="remote-cam-off-msg" id="remoteCamOffMsg">
+        <span class="material-symbols-outlined icon">videocam_off</span>
+        <span>Partner disabled camera</span>
+    </div>
+</div>
+
+<div class="local-video-container" id="draggablePip">
+    <video class="local-video" autoplay playsinline muted id="localVideo"></video>
+</div>
+
+<div class="header-glass">
+    <div class="user-info">
+        <button class="back-btn" id="backBtn"><span class="material-symbols-outlined">arrow_back</span></button>
+        <div class="name-status">
+            <div class="user-name" id="partnerName">Connecting...</div>
+            <div class="presence-badge" id="connStatus">
+                <span class="material-symbols-outlined">sync</span>
+                <span id="connText">Initializing...</span>
+            </div>
+        </div>
+    </div>
+    <div class="security-badge"><span class="material-symbols-outlined">mic_off</span>Silent</div>
+</div>
+
+<div class="controls-glass">
+    <button class="control-btn active" id="camToggle"><span class="material-symbols-outlined">videocam</span></button>
+    <button class="end-btn" id="endSession"><span class="material-symbols-outlined">close</span></button>
+    <button class="control-btn" id="switchCam"><span class="material-symbols-outlined">cameraswitch</span></button>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot, getDoc, updateDoc, arrayUnion, deleteDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+
+    const firebaseConfig = { 
+        apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow", 
+        authDomain: "bond-rs.firebaseapp.com", 
+        projectId: "bond-rs", 
+        storageBucket: "bond-rs.firebasestorage.app", 
+        messagingSenderId: "224682992857", 
+        appId: "1:224682992857:web:6e4946b905606217758ac8" 
+    }; 
+    
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const remoteCamOffMsg = document.getElementById('remoteCamOffMsg');
+    const connStatus = document.getElementById('connStatus');
+    const connText = document.getElementById('connText');
+    const partnerNameEl = document.getElementById('partnerName');
+
+    let CURRENT_USER = null;
+    let ROLE = null; // 'caller' or 'receiver'
+    let localStream = null;
+    let peerConnection = null;
+    let unsubscribeCall = null;
+    let currentFacingMode = "user";
+    
+    // Fix #2: Prevent Duplicate ICE Candidates
+    const processedCandidates = new Set(); 
+
+    const servers = {
+        iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }]
+    };
+
+    // --- 1. Init User & Role (Fix #8: Auth Strict Matching) ---
+    onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+            window.location.href = "chat.html";
+            return;
+        }
+        CURRENT_USER = user.displayName ? user.displayName.toUpperCase().trim() : user.uid;
+        setupWebRTC();
+    });
+
+    async function setupWebRTC() {
+        const callDocRef = doc(db, "calls", "currentCall");
+        const callSnap = await getDoc(callDocRef);
+
+        if (!callSnap.exists()) {
+            alert("No active session found.");
+            window.location.href = "chat.html";
+            return;
+        }
+
+        const callData = callSnap.data();
+        ROLE = (callData.caller === CURRENT_USER) ? 'caller' : 'receiver';
+        
+        const partnerID = (ROLE === 'caller') ? callData.receiver : callData.caller;
+        getDoc(doc(db, "users", partnerID)).then(pSnap => {
+            if(pSnap.exists()) partnerNameEl.innerText = pSnap.data().name || partnerID;
+            else partnerNameEl.innerText = partnerID;
+        });
+
+        startLocalVideo().then(() => initSignaling(callDocRef, callData));
+    }
+
+    async function startLocalVideo() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: false });
+            localVideo.srcObject = localStream;
+            localVideo.style.transform = currentFacingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+        } catch (error) {
+            alert("Camera Error: Please allow camera permissions.");
+            stopAllAndExit();
+        }
+    }
+
+    // --- 2. WebRTC Signaling Engine ---
+    async function initSignaling(callDocRef, callData) {
+        peerConnection = new RTCPeerConnection(servers);
+
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = (event) => {
+            remoteVideo.srcObject = event.streams[0];
+        };
+
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                const updateField = ROLE === 'caller' ? { callerCandidates: arrayUnion(event.candidate.toJSON()) } : { receiverCandidates: arrayUnion(event.candidate.toJSON()) };
+                updateDoc(callDocRef, updateField);
+            }
+        };
+
+        peerConnection.onconnectionstatechange = () => {
+            const state = peerConnection.connectionState;
+            if (state === 'connecting') {
+                connStatus.style.color = "#eab308";
+                connStatus.querySelector('span').innerText = 'sync';
+                connText.innerText = "Connecting...";
+            } else if (state === 'connected') {
+                connStatus.style.color = "#4ade80";
+                connStatus.querySelector('span').innerText = 'visibility';
+                connText.innerText = "Live Presence";
+            } else if (state === 'disconnected' || state === 'failed') {
+                connStatus.style.color = "#ef4444";
+                connStatus.querySelector('span').innerText = 'error';
+                connText.innerText = "Disconnected";
+                stopAllAndExit();
+            }
+        };
+
+        if (ROLE === 'caller') {
+            const offerDescription = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offerDescription);
+
+            await updateDoc(callDocRef, {
+                offer: { type: offerDescription.type, sdp: offerDescription.sdp }
+            });
+
+            unsubscribeCall = onSnapshot(callDocRef, (snapshot) => {
+                if (!handleDisconnect(snapshot)) return;
+
+                const data = snapshot.data();
+                if (!peerConnection.currentRemoteDescription && data?.answer) {
+                    const answerDescription = new RTCSessionDescription(data.answer);
+                    peerConnection.setRemoteDescription(answerDescription);
+                }
+                
+                if (data?.receiverCandidates) {
+                    data.receiverCandidates.forEach(c => {
+                        const candStr = c.candidate;
+                        if(!processedCandidates.has(candStr)) {
+                            peerConnection.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{});
+                            processedCandidates.add(candStr);
+                        }
+                    });
+                }
+                syncCameraState(data);
+            });
+        } else if (ROLE === 'receiver') {
+            // Fix #1: Receiver waits securely for offer
+            unsubscribeCall = onSnapshot(callDocRef, async (snapshot) => {
+                if (!handleDisconnect(snapshot)) return;
+                const data = snapshot.data();
+
+                if (!peerConnection.currentRemoteDescription && data?.offer) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    const answerDescription = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answerDescription);
+                    await updateDoc(callDocRef, {
+                        answer: { type: answerDescription.type, sdp: answerDescription.sdp }
+                    });
+                }
+                
+                // Only process candidates if remote description is set
+                if (data?.callerCandidates && peerConnection.currentRemoteDescription) {
+                    data.callerCandidates.forEach(c => {
+                        const candStr = c.candidate;
+                        if(!processedCandidates.has(candStr)) {
+                            peerConnection.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{});
+                            processedCandidates.add(candStr);
+                        }
+                    });
+                }
+                syncCameraState(data);
+            });
+        }
+    }
+
+    // --- 3. Clean Disconnect & Cleanup (Fix #3, #5, #6) ---
+    function handleDisconnect(snapshot) {
+        if (!snapshot.exists() || snapshot.data().status === 'ended') {
+            stopAllAndExit();
+            return false;
+        }
+        return true;
+    }
+
+    async function stopAllAndExit() {
+        if (unsubscribeCall) unsubscribeCall();
+        if (peerConnection) peerConnection.close();
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+
+        try {
+            // Fix #3: Caller deletes, Receiver updates status
+            if (ROLE === 'caller') {
+                await deleteDoc(doc(db, "calls", "currentCall"));
+            } else if (ROLE === 'receiver') {
+                await updateDoc(doc(db, "calls", "currentCall"), { status: 'ended' });
+            }
+        } catch (e) {}
+
+        window.location.href = 'chat.html';
+    }
+
+    document.getElementById('endSession').addEventListener('click', stopAllAndExit);
+    document.getElementById('backBtn').addEventListener('click', stopAllAndExit);
+
+    // Fix #6: Page Refresh & Tab Close Recovery
+    window.addEventListener('beforeunload', () => {
+        if (ROLE === 'caller') {
+            deleteDoc(doc(db, "calls", "currentCall"));
+        } else if (ROLE === 'receiver') {
+            updateDoc(doc(db, "calls", "currentCall"), { status: 'ended' });
+        }
+    });
+
+    // --- 4. Camera State Sync (Fix #7: Hide immediately) ---
+    function syncCameraState(data) {
+        const partnerCamOff = ROLE === 'caller' ? data?.receiverCamOff : data?.callerCamOff;
+        if (partnerCamOff) {
+            remoteVideo.style.opacity = '0'; // Immediately hide to avoid frozen frame
+            setTimeout(() => { if(remoteVideo.style.opacity === '0') remoteVideo.style.display = 'none'; }, 200);
+            remoteCamOffMsg.style.display = 'flex';
+        } else {
+            remoteVideo.style.display = 'block';
+            setTimeout(() => remoteVideo.style.opacity = '1', 50);
+            remoteCamOffMsg.style.display = 'none';
+        }
+    }
+
+    const camToggle = document.getElementById('camToggle');
+    const localVideoContainer = document.getElementById('draggablePip');
+
+    camToggle.addEventListener('click', async () => {
+        const icon = camToggle.querySelector('span');
+        const isCamActive = icon.innerText === 'videocam';
+
+        if (localStream) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) videoTrack.enabled = !isCamActive;
+        }
+
+        if (isCamActive) {
+            icon.innerText = 'videocam_off';
+            camToggle.classList.remove('active');
+            localVideoContainer.style.opacity = '0';
+            localVideoContainer.style.pointerEvents = 'none';
+        } else {
+            icon.innerText = 'videocam';
+            camToggle.classList.add('active');
+            localVideoContainer.style.opacity = '1';
+            localVideoContainer.style.pointerEvents = 'auto';
+        }
+
+        const callDocRef = doc(db, "calls", "currentCall");
+        const updateField = ROLE === 'caller' ? { callerCamOff: isCamActive } : { receiverCamOff: isCamActive };
+        await updateDoc(callDocRef, updateField);
+    });
+
+    // Fix #4: Camera Switch Safety
+    document.getElementById('switchCam').addEventListener('click', async () => {
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+        
+        localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: false });
+        localVideo.srcObject = localStream;
+        localVideo.style.transform = currentFacingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+
+        if (peerConnection) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === videoTrack.kind);
+            if (sender) {
+                sender.replaceTrack(videoTrack).catch(e => console.error("Error replacing track:", e));
+            }
+        }
+        
+        camToggle.querySelector('span').innerText = 'videocam';
+        camToggle.classList.add('active');
+        localVideoContainer.style.opacity = '1';
+
+        const updateField = ROLE === 'caller' ? { callerCamOff: false } : { receiverCamOff: false };
+        await updateDoc(doc(db, "calls", "currentCall"), updateField);
+    });
+
+    let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+    localVideoContainer.addEventListener("touchstart", e => {
+        initialX = e.touches[0].clientX - xOffset; initialY = e.touches[0].clientY - yOffset;
+        if (e.target === localVideoContainer || e.target === localVideo) isDragging = true;
+    }, {passive: false});
+    localVideoContainer.addEventListener("touchend", () => { initialX = currentX; initialY = currentY; isDragging = false; });
+    localVideoContainer.addEventListener("touchmove", e => {
+        if (isDragging) {
+            e.preventDefault();
+            currentX = e.touches[0].clientX - initialX; currentY = e.touches[0].clientY - initialY;
+            xOffset = currentX; yOffset = currentY;
+            localVideoContainer.style.transform = `translate(${currentX}px, ${currentY}px)`;
+        }
+    }, {passive: false});
+</script>
+
+</body>
+</html>
