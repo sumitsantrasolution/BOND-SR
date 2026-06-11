@@ -1,1 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+<title>BOND SR Gallery</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+}
+
+body {
+    background: #050505;
+    min-height: 100vh;
+    color: white;
+    overflow-x: hidden;
+    animation: fadeInPage 0.4s ease-out;
+}
+
+@keyframes fadeInPage {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+
+/* Ambient Background */
+body::before {
+    content: ''; position: fixed; width: 350px; height: 350px;
+    background: #7c3aed; filter: blur(140px); top: -100px; left: -100px; opacity: .35; z-index: -1;
+}
+
+body::after {
+    content: ''; position: fixed; width: 350px; height: 350px;
+    background: #2563eb; filter: blur(140px); bottom: -100px; right: -100px; opacity: .35; z-index: -1;
+}
+
+/* Header */
+.header {
+    position: fixed; top: 0; left: 0; right: 0; height: 75px;
+    backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+    background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: space-between; padding: 0 15px; z-index: 1000;
+}
+
+.header-left { display: flex; align-items: center; gap: 15px; }
+.back-btn {
+    width: 42px; height: 42px; border: none; border-radius: 12px;
+    background: rgba(255,255,255,.05); color: white; display: flex;
+    justify-content: center; align-items: center; cursor: pointer; transition: 0.3s;
+}
+.back-btn:active { transform: scale(0.9); }
+.header-title { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+
+/* Filter Tabs */
+.filter-tabs {
+    position: fixed; top: 75px; left: 0; right: 0; height: 60px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: linear-gradient(to bottom, rgba(5,5,5,0.9) 0%, rgba(5,5,5,0) 100%);
+    z-index: 999; padding: 0 15px;
+}
+
+.filter-btn {
+    padding: 8px 18px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05); color: #9ca3af; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: 0.3s; backdrop-filter: blur(10px);
+}
+
+.filter-btn.active {
+    background: linear-gradient(135deg, #7c3aed, #2563eb);
+    color: white; border-color: transparent; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+}
+
+/* Unique Masonry Gallery Layout */
+.gallery-container {
+    padding: 140px 15px 40px 15px;
+    column-count: 2;
+    column-gap: 12px;
+}
+
+@media (min-width: 600px) { .gallery-container { column-count: 3; } }
+@media (min-width: 900px) { .gallery-container { column-count: 4; } }
+
+.gallery-item {
+    break-inside: avoid; margin-bottom: 12px; border-radius: 14px;
+    overflow: hidden; position: relative; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08); cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: transform 0.2s;
+}
+
+.gallery-item:active { transform: scale(0.96); }
+
+.gallery-item img, .gallery-item video {
+    width: 100%; display: block; object-fit: cover;
+}
+
+.item-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 15px 10px 8px 10px;
+    background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
+    display: flex; justify-content: space-between; align-items: flex-end;
+    pointer-events: none;
+}
+
+.item-date { font-size: 10px; color: rgba(255,255,255,0.8); font-weight: 500; }
+
+.video-icon {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 40px; height: 40px; background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(5px); border-radius: 50%; display: flex;
+    justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.2);
+    pointer-events: none;
+}
+.video-icon span { color: white; font-size: 24px; margin-left: 2px; }
+
+/* Empty State */
+.empty-state {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    text-align: center; color: rgba(255,255,255,0.5); width: 100%;
+}
+.empty-state span { font-size: 48px; margin-bottom: 10px; opacity: 0.5; }
+.empty-state p { font-size: 14px; }
+
+/* Full Screen Modal */
+.img-modal {
+    display: none; position: fixed; z-index: 2000; left: 0; top: 0;
+    width: 100%; height: 100%; background-color: rgba(0,0,0,0.9);
+    backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+    justify-content: center; align-items: center; flex-direction: column;
+}
+
+.img-modal img, .img-modal video {
+    max-width: 95%; max-height: 85vh; border-radius: 12px;
+    object-fit: contain; box-shadow: 0 0 40px rgba(0,0,0,0.6);
+    animation: zoomIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes zoomIn {
+    0% { opacity: 0; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.close-modal {
+    position: absolute; top: 25px; right: 25px; color: white;
+    font-size: 30px; font-weight: bold; cursor: pointer;
+    background: rgba(255,255,255,0.1); width: 45px; height: 45px;
+    border-radius: 50%; display: flex; justify-content: center; align-items: center; z-index: 2010;
+    border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px);
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <button class="back-btn" onclick="window.location.href='chat.html'">
+            <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div class="header-title">Shared Media</div>
+    </div>
+</div>
+
+<div class="filter-tabs">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="image">Photos</button>
+    <button class="filter-btn" data-filter="video">Videos</button>
+</div>
+
+<div class="gallery-container" id="galleryContainer">
+    <div class="empty-state" id="loadingState">
+        <span class="material-symbols-outlined pulse-dot" style="animation: pulse 1.5s infinite;">hourglass_empty</span>
+        <p>Loading media...</p>
+    </div>
+</div>
+
+<div id="mediaModal" class="img-modal">
+    <div class="close-modal" id="closeModal">
+        <span class="material-symbols-outlined">close</span>
+    </div>
+    <img id="modalImage" src="" style="display:none;">
+    <video id="modalVideo" src="" controls style="display:none;"></video>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js"; 
+    import { getFirestore, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js"; 
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+
+    const firebaseConfig = { 
+        apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow", 
+        authDomain: "bond-rs.firebaseapp.com", 
+        projectId: "bond-rs", 
+        storageBucket: "bond-rs.firebasestorage.app", 
+        messagingSenderId: "224682992857", 
+        appId: "1:224682992857:web:6e4946b905606217758ac8" 
+    }; 
+    
+    const app = initializeApp(firebaseConfig); 
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    
+    const ROOM_ID = "SR";
+    const messagesRef = collection(db, "rooms", ROOM_ID, "messages");
+
+    const galleryContainer = document.getElementById('galleryContainer');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    let currentFilter = 'all';
+    let allMediaData = [];
+
+    function formatGalleryDate(timestamp) {
+        if(!timestamp) return "";
+        const date = timestamp.toDate();
+        return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function loadGallery() {
+        const q = query(messagesRef, orderBy("timestamp", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            allMediaData = [];
+            
+            snapshot.docs.forEach(doc => {
+                const msg = doc.data();
+                if ((msg.type === 'image' || msg.type === 'video') && msg.url && msg.type !== 'deleted') {
+                    allMediaData.push(msg);
+                }
+            });
+
+            renderGallery();
+        }, (error) => {
+            console.error("Error fetching gallery:", error);
+            galleryContainer.innerHTML = `<div class="empty-state"><p>Error loading media. Check console.</p></div>`;
+        });
+    }
+
+    function renderGallery() {
+        galleryContainer.innerHTML = '';
+
+        const filteredMedia = allMediaData.filter(media => {
+            if (currentFilter === 'all') return true;
+            return media.type === currentFilter;
+        });
+
+        if (filteredMedia.length === 0) {
+            galleryContainer.innerHTML = `
+                <div class="empty-state">
+                    <span class="material-symbols-outlined">image_not_supported</span>
+                    <p>No media found</p>
+                </div>
+            `;
+            return;
+        }
+
+        filteredMedia.forEach(msg => {
+            const itemDiv = document.createElement("div");
+            itemDiv.className = `gallery-item ${msg.type}`;
+            
+            let mediaElement = '';
+            let videoOverlay = '';
+
+            if (msg.type === 'image') {
+                mediaElement = `<img src="${msg.url}" loading="lazy" alt="Shared Photo">`;
+            } else if (msg.type === 'video') {
+                mediaElement = `<video src="${msg.url}#t=0.1" preload="metadata" muted playsinline></video>`;
+                videoOverlay = `
+                    <div class="video-icon">
+                        <span class="material-symbols-outlined">play_arrow</span>
+                    </div>`;
+            }
+
+            const dateStr = formatGalleryDate(msg.timestamp);
+
+            itemDiv.innerHTML = `
+                ${mediaElement}
+                ${videoOverlay}
+                <div class="item-overlay">
+                    <span class="item-date">${dateStr}</span>
+                </div>
+            `;
+
+            itemDiv.onclick = () => openModal(msg.url, msg.type);
+            galleryContainer.appendChild(itemDiv);
+        });
+    }
+
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            filterBtns.forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentFilter = e.target.getAttribute('data-filter');
+            renderGallery();
+        });
+    });
+
+    const modal = document.getElementById('mediaModal');
+    const modalImg = document.getElementById('modalImage');
+    const modalVid = document.getElementById('modalVideo');
+    const closeModal = document.getElementById('closeModal');
+
+    function openModal(url, type) {
+        modal.style.display = 'flex';
+        if (type === 'image') {
+            modalImg.src = url;
+            modalImg.style.display = 'block';
+            modalVid.style.display = 'none';
+        } else if (type === 'video') {
+            modalVid.src = url;
+            modalVid.style.display = 'block';
+            modalImg.style.display = 'none';
+            modalVid.play();
+        }
+    }
+
+    closeModal.onclick = () => {
+        modal.style.display = 'none';
+        modalVid.pause();
+        modalVid.src = '';
+        modalImg.src = '';
+    }
+
+    modal.onclick = (e) => {
+        if(e.target === modal) {
+            modal.style.display = 'none';
+            modalVid.pause();
+        }
+    }
+
+    // Auth state check inside lifecycle to follow security rules
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            loadGallery();
+        } else {
+            signInAnonymously(auth).catch((error) => console.error("Auth Error:", error));
+        }
+    });
+</script>
+
+</body>
+</html>
