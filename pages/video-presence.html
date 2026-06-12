@@ -4,6 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BOND SR - Video Presence</title>
+
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BOND SR">
+
+    <link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
 
@@ -165,7 +182,7 @@ body {
         iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }]
     };
 
-    // --- 1. Init User & Role (Fix #8: Auth Strict Matching) ---
+    // --- 1. Init User & Role ---
     onAuthStateChanged(auth, async (user) => {
         if (!user) {
             window.location.href = "chat.html";
@@ -186,6 +203,14 @@ body {
         }
 
         const callData = callSnap.data();
+        
+        // Fix #3: Strict Authentication Identity Check
+        if (callData.caller !== CURRENT_USER && callData.receiver !== CURRENT_USER) {
+            alert("Unauthorized access.");
+            window.location.href = "chat.html";
+            return;
+        }
+
         ROLE = (callData.caller === CURRENT_USER) ? 'caller' : 'receiver';
         
         const partnerID = (ROLE === 'caller') ? callData.receiver : callData.caller;
@@ -222,8 +247,9 @@ body {
 
         peerConnection.onicecandidate = event => {
             if (event.candidate) {
-                const updateField = ROLE === 'caller' ? { callerCandidates: arrayUnion(event.candidate.toJSON()) } : { receiverCandidates: arrayUnion(event.candidate.toJSON()) };
-                updateDoc(callDocRef, updateField);
+                const candidateJSON = event.candidate.toJSON();
+                const updateField = ROLE === 'caller' ? { callerCandidates: arrayUnion(candidateJSON) } : { receiverCandidates: arrayUnion(candidateJSON) };
+                updateDoc(callDocRef, updateField).catch(err => console.error("ICE update error:", err));
             }
         };
 
@@ -246,12 +272,15 @@ body {
         };
 
         if (ROLE === 'caller') {
-            const offerDescription = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offerDescription);
-
-            await updateDoc(callDocRef, {
-                offer: { type: offerDescription.type, sdp: offerDescription.sdp }
-            });
+            try {
+                const offerDescription = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offerDescription);
+                await updateDoc(callDocRef, {
+                    offer: { type: offerDescription.type, sdp: offerDescription.sdp }
+                });
+            } catch (err) {
+                console.error("Offer creation failed:", err);
+            }
 
             unsubscribeCall = onSnapshot(callDocRef, (snapshot) => {
                 if (!handleDisconnect(snapshot)) return;
@@ -259,7 +288,7 @@ body {
                 const data = snapshot.data();
                 if (!peerConnection.currentRemoteDescription && data?.answer) {
                     const answerDescription = new RTCSessionDescription(data.answer);
-                    peerConnection.setRemoteDescription(answerDescription);
+                    peerConnection.setRemoteDescription(answerDescription).catch(err => console.error("Answer set failed:", err));
                 }
                 
                 if (data?.receiverCandidates) {
@@ -274,18 +303,22 @@ body {
                 syncCameraState(data);
             });
         } else if (ROLE === 'receiver') {
-            // Fix #1: Receiver waits securely for offer
             unsubscribeCall = onSnapshot(callDocRef, async (snapshot) => {
                 if (!handleDisconnect(snapshot)) return;
                 const data = snapshot.data();
 
+                // Fix #1: Receiver strict wait for offer
                 if (!peerConnection.currentRemoteDescription && data?.offer) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answerDescription = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answerDescription);
-                    await updateDoc(callDocRef, {
-                        answer: { type: answerDescription.type, sdp: answerDescription.sdp }
-                    });
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                        const answerDescription = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answerDescription);
+                        await updateDoc(callDocRef, {
+                            answer: { type: answerDescription.type, sdp: answerDescription.sdp }
+                        });
+                    } catch (err) {
+                        console.error("Failed to process offer/create answer:", err);
+                    }
                 }
                 
                 // Only process candidates if remote description is set
@@ -303,7 +336,7 @@ body {
         }
     }
 
-    // --- 3. Clean Disconnect & Cleanup (Fix #3, #5, #6) ---
+    // --- 3. Clean Disconnect & Cleanup (Fix #5) ---
     function handleDisconnect(snapshot) {
         if (!snapshot.exists() || snapshot.data().status === 'ended') {
             stopAllAndExit();
@@ -313,12 +346,20 @@ body {
     }
 
     async function stopAllAndExit() {
-        if (unsubscribeCall) unsubscribeCall();
-        if (peerConnection) peerConnection.close();
-        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        if (unsubscribeCall) {
+            unsubscribeCall();
+            unsubscribeCall = null;
+        }
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
 
         try {
-            // Fix #3: Caller deletes, Receiver updates status
             if (ROLE === 'caller') {
                 await deleteDoc(doc(db, "calls", "currentCall"));
             } else if (ROLE === 'receiver') {
@@ -332,7 +373,6 @@ body {
     document.getElementById('endSession').addEventListener('click', stopAllAndExit);
     document.getElementById('backBtn').addEventListener('click', stopAllAndExit);
 
-    // Fix #6: Page Refresh & Tab Close Recovery
     window.addEventListener('beforeunload', () => {
         if (ROLE === 'caller') {
             deleteDoc(doc(db, "calls", "currentCall"));
@@ -341,11 +381,11 @@ body {
         }
     });
 
-    // --- 4. Camera State Sync (Fix #7: Hide immediately) ---
+    // --- 4. Camera State Sync ---
     function syncCameraState(data) {
         const partnerCamOff = ROLE === 'caller' ? data?.receiverCamOff : data?.callerCamOff;
         if (partnerCamOff) {
-            remoteVideo.style.opacity = '0'; // Immediately hide to avoid frozen frame
+            remoteVideo.style.opacity = '0'; 
             setTimeout(() => { if(remoteVideo.style.opacity === '0') remoteVideo.style.display = 'none'; }, 200);
             remoteCamOffMsg.style.display = 'flex';
         } else {
@@ -384,29 +424,44 @@ body {
         await updateDoc(callDocRef, updateField);
     });
 
-    // Fix #4: Camera Switch Safety
+    // Fix #4: Safe Camera Switch
     document.getElementById('switchCam').addEventListener('click', async () => {
-        if (localStream) localStream.getTracks().forEach(track => track.stop());
-        currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+        const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
         
-        localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: false });
-        localVideo.srcObject = localStream;
-        localVideo.style.transform = currentFacingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
-
-        if (peerConnection) {
-            const videoTrack = localStream.getVideoTracks()[0];
-            const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === videoTrack.kind);
-            if (sender) {
-                sender.replaceTrack(videoTrack).catch(e => console.error("Error replacing track:", e));
+        try {
+            // Get new stream BEFORE stopping the old one
+            const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacingMode }, audio: false });
+            
+            // Success! Now stop old tracks safely
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
             }
-        }
-        
-        camToggle.querySelector('span').innerText = 'videocam';
-        camToggle.classList.add('active');
-        localVideoContainer.style.opacity = '1';
+            
+            localStream = newStream;
+            currentFacingMode = newFacingMode;
+            
+            localVideo.srcObject = localStream;
+            localVideo.style.transform = currentFacingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
-        const updateField = ROLE === 'caller' ? { callerCamOff: false } : { receiverCamOff: false };
-        await updateDoc(doc(db, "calls", "currentCall"), updateField);
+            if (peerConnection) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === videoTrack.kind);
+                if (sender) {
+                    sender.replaceTrack(videoTrack).catch(e => console.error("Error replacing track:", e));
+                }
+            }
+            
+            camToggle.querySelector('span').innerText = 'videocam';
+            camToggle.classList.add('active');
+            localVideoContainer.style.opacity = '1';
+
+            const updateField = ROLE === 'caller' ? { callerCamOff: false } : { receiverCamOff: false };
+            await updateDoc(doc(db, "calls", "currentCall"), updateField);
+
+        } catch (err) {
+            console.error("Camera switch failed", err);
+            // Don't crash, let the user know they are still on the old camera
+        }
     });
 
     let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
