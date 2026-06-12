@@ -447,7 +447,7 @@
                     <div class="avatar-box" id="avatarBox">
                         <img id="partnerPhoto" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop" class="avatar-img" alt="Profile">
                     </div>
-                    <h1 class="caller-name" id="partnerName">Rubina</h1>
+                    <h1 class="caller-name" id="partnerName">Connecting...</h1>
                     <p class="call-status" id="callStatusText">Calling...</p>
                 </div>
 
@@ -484,7 +484,7 @@
         </div>
 
         <div class="top-overlay">
-            <h2 class="active-caller-name" id="activePartnerName">Rubina</h2>
+            <h2 class="active-caller-name" id="activePartnerName">Connecting...</h2>
             <div class="call-timer">
                 <span class="live-dot"></span>
                 <span id="activeTimer">00:00</span>
@@ -518,7 +518,17 @@
         const app = initializeApp(firebaseConfig); 
         const db = getFirestore(app);
 
-        const OTHER_USER = "RUBINA";
+        // সেশন থেকে ডায়নামিক আইডেন্টিটি নেওয়া
+        let CURRENT_USER = sessionStorage.getItem("CURRENT_USER");
+        
+        // যদি সেশনে আইডেন্টিটি না থাকে, তাহলে লগইন পেজে পাঠিয়ে দেবে
+        if (!CURRENT_USER) {
+            window.location.href = "index-PWA.html";
+        }
+        
+        // পার্টনার সিলেক্ট করা
+        let OTHER_USER = (CURRENT_USER === "SUMIT") ? "RUBINA" : "SUMIT";
+        
         const callDocRef = doc(db, "calls", "currentCall");
 
         // WebRTC Configuration
