@@ -8,7 +8,19 @@
 
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#7c3aed">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BOND SR">
+
+<link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+<link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
 
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
@@ -275,7 +287,7 @@ autocomplete="off">
 
 </div>
 
-<button onclick="enterRoom()">
+<button onclick="window.enterRoom()">
 ENTER ROOM
 </button>
 
@@ -291,33 +303,97 @@ Access Denied
 
 </div>
 
-<script>
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
+import { getFirestore, doc, runTransaction } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDbH6axEkR127PTFt0IM1VRoLA4xJh-Uow",
+    authDomain: "bond-rs.firebaseapp.com",
+    projectId: "bond-rs",
+    storageBucket: "bond-rs.firebasestorage.app",
+    messagingSenderId: "224682992857",
+    appId: "1:224682992857:web:6e4946b905606217758ac8"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 const ROOM_CODE = "SR";
 
-function enterRoom(){
+async function assignIdentityAndLogin() {
+    const identityRef = doc(db, "users", "identity");
+    const btn = document.querySelector('button');
+    const originalText = btn.innerText;
 
-const code =
-document.getElementById("roomCode")
-.value
-.trim();
+    btn.innerText = "ASSIGNING...";
+    btn.disabled = true;
 
-if(code === ROOM_CODE){
+    try {
+        const assignedUser = await runTransaction(db, async (transaction) => {
+            const docSnap = await transaction.get(identityRef);
 
-sessionStorage.setItem(
-"bond_access",
-"true"
-);
+            if (!docSnap.exists()) {
+                throw "Identity document does not exist!";
+            }
 
-window.location.href =
-"pages/chat.html";
+            const data = docSnap.data();
 
-}else{
+            if (!data.sumitTaken) {
+                transaction.update(identityRef, { sumitTaken: true });
+                return "SUMIT";
+            } else if (!data.rubinaTaken) {
+                transaction.update(identityRef, { rubinaTaken: true });
+                return "RUBINA";
+            } else {
+                return "FULL";
+            }
+        });
 
-document.getElementById("error")
-.style.display = "block";
+        if (assignedUser === "FULL") {
+            document.getElementById("error").innerText = "Room is full! Maximum 2 users allowed at a time.";
+            document.getElementById("error").style.display = "block";
+            btn.innerText = originalText;
+            btn.disabled = false;
+        } else {
+            // আইডেন্টিটি সেশনে সেভ করে চ্যাটে পাঠানো
+            sessionStorage.setItem("CURRENT_USER", assignedUser);
+            sessionStorage.setItem("bond_access", "true");
+            
+            window.location.href = "chat.html";
+        }
 
+    } catch (error) {
+        console.error("Identity assignment failed: ", error);
+        
+        document.getElementById("error").innerText = "Connection error. Please try again.";
+        document.getElementById("error").style.display = "block";
+        
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
 }
+
+// গ্লোবাল ফাংশন যাতে বাটন ক্লিক কাজ করে
+window.enterRoom = function() {
+
+    const code =
+    document.getElementById("roomCode")
+    .value
+    .trim();
+
+    if(code === ROOM_CODE){
+
+        document.getElementById("error").style.display = "none";
+        assignIdentityAndLogin();
+
+    }else{
+
+        document.getElementById("error").innerText = "Access Denied";
+        document.getElementById("error").style.display = "block";
+
+    }
 
 }
 
@@ -325,9 +401,9 @@ document
 .getElementById("roomCode")
 .addEventListener("keypress",function(e){
 
-if(e.key==="Enter"){
-enterRoom();
-}
+    if(e.key==="Enter"){
+        window.enterRoom();
+    }
 
 });
 
