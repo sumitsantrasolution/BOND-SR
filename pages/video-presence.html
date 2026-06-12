@@ -168,7 +168,14 @@ body {
     const connText = document.getElementById('connText');
     const partnerNameEl = document.getElementById('partnerName');
 
-    let CURRENT_USER = null;
+    // সেশন থেকে ডায়নামিক আইডেন্টিটি নেওয়া
+    let CURRENT_USER = sessionStorage.getItem("CURRENT_USER");
+    
+    // যদি সেশনে আইডেন্টিটি না থাকে, তাহলে লগইন পেজে পাঠিয়ে দেবে
+    if (!CURRENT_USER) {
+        window.location.href = "index-PWA.html";
+    }
+
     let ROLE = null; // 'caller' or 'receiver'
     let localStream = null;
     let peerConnection = null;
@@ -184,12 +191,11 @@ body {
 
     // --- 1. Init User & Role ---
     onAuthStateChanged(auth, async (user) => {
-        if (!user) {
+        if (user) {
+            setupWebRTC();
+        } else {
             window.location.href = "chat.html";
-            return;
         }
-        CURRENT_USER = user.displayName ? user.displayName.toUpperCase().trim() : user.uid;
-        setupWebRTC();
     });
 
     async function setupWebRTC() {
