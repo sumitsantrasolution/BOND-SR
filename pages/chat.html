@@ -6,6 +6,22 @@
 
 <title>BOND SR Chat</title>
 
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BOND SR">
+
+    <link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
+
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
 
@@ -224,9 +240,45 @@ body::after {
     font-size: 11px; color: #8b5cf6; margin-top: 2px; display: none; font-style: italic;
 }
 .mic-recording { background: #ef4444 !important; animation: pulse 1s infinite; }
+
+/* NEW: Silent Video Presence Toast Style */
+.presence-toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+    background: rgba(30, 30, 30, 0.95); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(124, 58, 237, 0.6); border-radius: 14px;
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 15px;
+    z-index: 9999; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(124, 58, 237, 0.2);
+    color: #fff; width: 90%; max-width: 400px;
+    animation: popDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+@keyframes popDown {
+    0% { opacity: 0; transform: translate(-50%, -20px) scale(0.95); }
+    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+.toast-content { display: flex; align-items: center; gap: 10px; flex-grow: 1; }
+.toast-content .icon { color: #4ade80; animation: pulse 2s infinite; }
+.toast-text { font-size: 13px; line-height: 1.4; }
+.toast-actions { display: flex; gap: 8px; }
+.join-btn { background: #7c3aed; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12px; transition: 0.2s; }
+.join-btn:active { transform: scale(0.95); }
+.decline-btn { background: rgba(255,255,255,0.1); color: #fff; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: 0.2s; }
+.decline-btn:active { transform: scale(0.95); }
 </style>
 </head>
 <body>
+
+<div id="videoPresenceToast" class="presence-toast" style="display: none;">
+    <div class="toast-content">
+        <span class="material-symbols-outlined icon">videocam</span>
+        <div class="toast-text">
+            <strong id="presenceCallerName">BOND SR</strong> started a silent video presence
+        </div>
+    </div>
+    <div class="toast-actions">
+        <button id="joinPresenceBtn" class="join-btn">Join</button>
+        <button id="declinePresenceBtn" class="decline-btn">Ignore</button>
+    </div>
+</div>
 
 <div class="header">
     <div class="left">
@@ -271,7 +323,7 @@ body::after {
     <button aria-label="Video Call" class="float-btn" onclick="startVideoCall()">
         <span class="material-symbols-outlined">videocam</span>
     </button>
-    <button aria-label="Video Presence" class="float-btn presence" onclick="window.location.href='video-presence.html'">
+    <button aria-label="Video Presence" class="float-btn presence" onclick="startVideoPresence()">
         <span class="material-symbols-outlined">visibility</span>
     </button>
 </div>
@@ -378,6 +430,24 @@ body::after {
             }, { merge: true });
         } catch (error) {
             console.error("Video Call Error:", error);
+        }
+    };
+
+    // --- NEW: Video Presence Call Function ---
+    window.startVideoPresence = async function() {
+        if (!CURRENT_USER) return;
+        try {
+            await setDoc(doc(db, "calls", "currentCall"), {
+                caller: CURRENT_USER,
+                receiver: OTHER_USER,
+                type: "presence",
+                status: "calling",
+                createdAt: serverTimestamp()
+            }, { merge: true });
+            // Caller goes straight to the presence page
+            window.location.href = "video-presence.html";
+        } catch (error) {
+            console.error("Presence Call Error:", error);
         }
     };
 
@@ -609,6 +679,7 @@ body::after {
                 const call = snap.data();
                 if (!call) return;
 
+                // Standard Audio/Video Calls
                 if (call.receiver === CURRENT_USER && call.status === "ringing") {
                     if (call.type === "audio") {
                         window.location.href = "incoming-audio-call.html";
@@ -616,6 +687,29 @@ body::after {
                     if (call.type === "video") {
                         window.location.href = "incoming-video-call.html";
                     }
+                }
+
+                // NEW: Silent Video Presence Incoming Logic
+                const toast = document.getElementById("videoPresenceToast");
+                if (call.receiver === CURRENT_USER && call.type === "presence" && call.status === "calling") {
+                    const partnerName = document.getElementById("headerName").textContent || call.caller;
+                    document.getElementById("presenceCallerName").innerText = partnerName;
+                    toast.style.display = "flex";
+                    
+                    document.getElementById("joinPresenceBtn").onclick = async () => {
+                        toast.style.display = "none";
+                        // Update status so toast doesn't persist, then navigate
+                        await setDoc(doc(db, "calls", "currentCall"), { status: "joined" }, { merge: true });
+                        window.location.href = "video-presence.html";
+                    };
+                    
+                    document.getElementById("declinePresenceBtn").onclick = async () => {
+                        toast.style.display = "none";
+                        await setDoc(doc(db, "calls", "currentCall"), { status: "ended" }, { merge: true });
+                    };
+                } else {
+                    // Hide toast if the call status changes (e.g., caller canceled)
+                    toast.style.display = "none";
                 }
             });
 
