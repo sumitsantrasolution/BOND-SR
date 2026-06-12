@@ -4,6 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Outgoing Audio Call</title>
+    
+        <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BOND SR">
+
+    <link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -293,6 +310,24 @@
         let pc = new RTCPeerConnection(servers);
         let localStream = null;
         let remoteStream = new MediaStream();
+        const processedCandidates = new Set(); // Fix: Duplicate ICE candidate protection
+
+        // ==========================================
+        // Audio Assets Setup & Cleanup Logic
+        // ==========================================
+        const dialTone = new Audio('assets/outgoing-call.mp3');
+        dialTone.loop = true;
+        const callEndedTone = new Audio('assets/call-ended.mp3');
+        const busyTone = new Audio('assets/busy-tone.mp3');
+
+        function stopAllTones() {
+            dialTone.pause();
+            dialTone.currentTime = 0;
+            callEndedTone.pause();
+            callEndedTone.currentTime = 0;
+            busyTone.pause();
+            busyTone.currentTime = 0;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const morphContainer = document.getElementById('morphContainer');
@@ -308,26 +343,52 @@
             let isCallAccepted = false;
             let isEnding = false; // মাল্টিপল ক্লিক ঠেকানোর জন্য
 
+            // Start Dial Tone immediately
+            dialTone.play().catch(e => console.log("Audio autoplay blocked by browser", e));
+
             setTimeout(() => {
                 morphContainer.classList.add('expanded');
             }, 200);
 
             // ==========================================
-            // FIX: Cancel/End Button (Non-blocking)
+            // FIX: Cancel/End Button & Safe Tone End Logic
             // ==========================================
-            async function endCallProcess() {
+            async function endCallProcess(reason = "cancel") {
                 if(isEnding) return;
                 isEnding = true;
                 
                 clearInterval(timerInterval);
+                
+                // Fix: Full stream cleanup
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
+                }
+                if (remoteStream) {
+                    remoteStream.getTracks().forEach(track => track.stop());
+                    remoteStream = null;
+                }
+                if (remoteAudio) {
+                    remoteAudio.srcObject = null;
                 }
                 if (pc) {
                     pc.close();
                 }
 
-                callStatusText.textContent = isCallAccepted ? "CALL ENDED" : "CANCELLED";
+                // Stop all ongoing tones
+                stopAllTones();
+
+                let activeTone = callEndedTone;
+                
+                // Play appropriate feedback tone
+                if (reason === "busy") {
+                    activeTone = busyTone;
+                    callStatusText.textContent = "USER IS BUSY";
+                } else {
+                    if (isCallAccepted) callStatusText.textContent = "CALL ENDED";
+                    else if (reason === "rejected") callStatusText.textContent = "CALL DECLINED";
+                    else callStatusText.textContent = "CANCELLED";
+                }
+
                 callStatusText.style.color = "#ef4444";
                 timerDisplay.style.display = 'none';
                 avatarBox.style.borderColor = "#ef4444";
@@ -347,14 +408,28 @@
                     console.error("Error ending call", err);
                 }
 
-                setTimeout(() => {
-                    window.history.back(); // চ্যাটে ব্যাক করা
-                }, 1000);
+                // Fix: Play tone then go back
+                let isNavigated = false;
+                const goBack = () => {
+                    if(!isNavigated) {
+                        isNavigated = true;
+                        window.history.back();
+                    }
+                };
+
+                activeTone.play().then(() => {
+                    activeTone.onended = goBack;
+                    // Fallback in case onended doesn't fire
+                    setTimeout(goBack, 5000);
+                }).catch(e => {
+                    console.log("Audio blocked", e);
+                    setTimeout(goBack, 1500);
+                });
             }
 
             cancelCallBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                endCallProcess();
+                endCallProcess("cancel");
             });
 
             // ==========================================
@@ -417,6 +492,11 @@
                     avatarBox.classList.add('connected');
                     cancelLabel.textContent = "End Call";
                     
+                    // Premium Feature: Stop Dial Tone with ~150ms delay
+                    setTimeout(() => {
+                        stopAllTones();
+                    }, 150);
+                    
                     timerDisplay.style.display = 'block';
                     let seconds = 0;
                     timerInterval = setInterval(() => {
@@ -427,13 +507,15 @@
                     }, 1000);
                 } 
                 else if (call.status === "rejected") {
-                    callStatusText.textContent = "CALL DECLINED";
-                    callStatusText.style.color = "#ef4444";
-                    setTimeout(() => endCallProcess(), 1000);
+                    endCallProcess("rejected");
+                }
+                else if (call.status === "busy") {
+                    // Receiver was in another call or simultaneous call occurred
+                    endCallProcess("busy");
                 }
                 else if (call.status === "idle" && isCallAccepted) {
                     // অপরজন কল কেটে দিলে
-                    endCallProcess();
+                    endCallProcess("ended");
                 }
             });
 
@@ -441,8 +523,13 @@
             onSnapshot(receiverCandidatesCollection, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
-                        const candidate = new RTCIceCandidate(change.doc.data());
-                        pc.addIceCandidate(candidate);
+                        const data = change.doc.data();
+                        // Fix: Duplicate Candidate Protection
+                        if(data.candidate && !processedCandidates.has(data.candidate)) {
+                            const candidate = new RTCIceCandidate(data);
+                            pc.addIceCandidate(candidate).catch(e => console.log(e));
+                            processedCandidates.add(data.candidate);
+                        }
                     }
                 });
             });
