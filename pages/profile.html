@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>BOND SR Profile</title>
 
-<!-- PWA Meta Tags & Manifest -->
-    <link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#7c3aed">
     
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -82,7 +81,14 @@ body::after{ content:''; position:fixed; width:350px; height:350px; background:#
   // 4. Local Default Photo Asset
   const DEFAULT_PHOTO = "assets/default-avatar.webp";
   
-  let USER_ID = ""; 
+  // সেশন থেকে ডায়নামিক আইডেন্টিটি নেওয়া হচ্ছে
+  let USER_ID = sessionStorage.getItem("CURRENT_USER"); 
+  
+  // যদি সেশনে আইডেন্টিটি না থাকে, তাহলে লগইন পেজে পাঠিয়ে দেবে
+  if (!USER_ID) {
+      window.location.href = "index-PWA.html";
+  }
+
   let selectedFileBlob = null;
   let currentObjectURL = null; 
 
@@ -100,13 +106,8 @@ body::after{ content:''; position:fixed; width:350px; height:350px; background:#
 
   toggleLoadingState(true);
 
-  // 1. Strict Identity Consistency (UID or Fixed Role)
+  // 1. Strict Identity Consistency from Session Storage
   onAuthStateChanged(auth, (user) => {
-    if (user) {
-      USER_ID = user.uid; // Primary: Strict UID
-    } else {
-      USER_ID = "SUMIT"; // Fallback/Fixed Role for Chat System
-    }
     loadUserData();
   });
 
