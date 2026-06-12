@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Fluid VIP Call UI - Fixed</title>
+    
+    <!-- PWA Meta Tags & Manifest -->
+        <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BOND SR">
+
+    <link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -321,6 +339,18 @@
         let pc = new RTCPeerConnection(servers);
         let localStream = null;
         let remoteStream = new MediaStream();
+        const processedCandidates = new Set(); // WebRTC Candidate protection
+
+        // ==========================================
+        // Ringtone Assets Setup & Cleanup Logic
+        // ==========================================
+        const incomingRingtone = new Audio('assets/ringtone.mp3');
+        incomingRingtone.loop = true;
+
+        function stopRingtone() {
+            incomingRingtone.pause();
+            incomingRingtone.currentTime = 0;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const morphContainer = document.getElementById('morphContainer');
@@ -340,6 +370,9 @@
             let timerInterval;
             let isEnding = false;
 
+            // Start Ringtone immediately on incoming call UI load
+            incomingRingtone.play().catch(e => console.log("Ringtone autoplay blocked by browser", e));
+
             // পার্টনারের নাম ও ছবি লোড করা (যিনি কল করছেন)
             getDoc(doc(db, "users", CALLER_USER)).then((userSnap) => {
                 if(userSnap.exists()) {
@@ -355,22 +388,33 @@
                 morphContainer.classList.add('expanded');
             });
 
-            // কল কেটে দেওয়ার কমন ফাংশন
-            const terminateCall = async (e) => {
+            // ==========================================
+            // FIX 1: terminateCall with strict status handling
+            // ==========================================
+            const terminateCall = async (reason = "idle", e = null) => {
                 if(e) e.stopPropagation();
                 if(isEnding) return;
                 isEnding = true;
 
                 clearInterval(timerInterval);
+                stopRingtone();
                 
+                // Cleanup WebRTC & Streams
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
+                }
+                if (remoteStream) {
+                    remoteStream.getTracks().forEach(track => track.stop());
+                    remoteStream = null; // FIX 4: Remote Stream cleanup
+                }
+                if (remoteAudio) {
+                    remoteAudio.srcObject = null;
                 }
                 if (pc) {
                     pc.close();
                 }
 
-                callStatusText.textContent = "CALL ENDED";
+                callStatusText.textContent = reason === "rejected" ? "CALL DECLINED" : "CALL ENDED";
                 callStatusText.style.color = "#ef4444";
                 timerDisplay.style.display = 'none';
                 avatarBox.style.borderColor = "#ef4444";
@@ -382,7 +426,7 @@
 
                 try {
                     await updateDoc(callDocRef, {
-                        status: "idle",
+                        status: reason === "rejected" ? "rejected" : "idle", // Send rejected if declined
                         caller: "none",
                         receiver: "none",
                         type: "none"
@@ -395,23 +439,35 @@
                 }, 1500);
             };
 
-            // ৩. Decline বাটনে ক্লিক
-            declineBtn.addEventListener('click', terminateCall);
-            // ৪. End Call বাটনে ক্লিক
-            endCallBtn.addEventListener('click', terminateCall);
+            // ৩. Decline বাটনে ক্লিক (Reason = rejected)
+            declineBtn.addEventListener('click', (e) => terminateCall("rejected", e));
+            
+            // ৪. End Call বাটনে ক্লিক (Reason = idle)
+            endCallBtn.addEventListener('click', (e) => terminateCall("idle", e));
+
+            // Window unload / refresh safety cleanup
+            window.addEventListener('beforeunload', () => {
+                stopRingtone();
+                if (!isEnding) {
+                    updateDoc(callDocRef, { status: "ended" }).catch(e => console.error(e));
+                }
+            });
 
             // অপরজন (Caller) যদি কল কেটে দেয়, তবে লিসেনার তা ধরে ফেলবে
             onSnapshot(callDocRef, (snap) => {
                 if(!snap.exists() || isEnding) return;
                 const data = snap.data();
-                if(data.status === "idle" || data.status === "none") {
-                    terminateCall(); // Caller কল কাটলে রিসিভারেরও কল কেটে চ্যাটে ব্যাক করবে
+                if(data.status === "idle" || data.status === "none" || data.status === "ended" || data.status === "cancel") {
+                    terminateCall("idle"); // Caller কল কাটলে রিসিভারেরও কল কেটে চ্যাটে ব্যাক করবে
                 }
             });
 
             // ২. কল রিসিভ (Accept) করলে WebRTC সেটআপ শুরু হবে
             acceptBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
+                
+                // Stop ringtone immediately when accepted
+                stopRingtone();
                 
                 callStatusText.textContent = "CONNECTING...";
                 callStatusText.style.color = "#ffffff";
@@ -432,7 +488,7 @@
                 }, 300);
 
                 // ==========================================
-                // WebRTC Answer Logic
+                // FIX 2: WebRTC Answer Logic with Try/Catch
                 // ==========================================
                 try {
                     // মাইক্রোফোন এক্সেস নেওয়া
@@ -440,66 +496,82 @@
                     localStream.getTracks().forEach((track) => {
                         pc.addTrack(track, localStream);
                     });
-                } catch (error) {
-                    console.error("Microphone access failed:", error);
-                }
 
-                pc.ontrack = (event) => {
-                    event.streams[0].getTracks().forEach((track) => {
-                        remoteStream.addTrack(track);
-                    });
-                    remoteAudio.srcObject = remoteStream; // Caller এর কথা শোনা যাবে
-                };
-
-                // রিসিভারের ICE Candidates ডেটাবেসে পাঠানো
-                const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
-                pc.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        addDoc(receiverCandidatesCollection, event.candidate.toJSON());
-                    }
-                };
-
-                // Caller-এর Offer ডেটাবেস থেকে পড়া এবং Answer তৈরি করা
-                const callDoc = await getDoc(callDocRef);
-                const callData = callDoc.data();
-                
-                if (callData.offer) {
-                    const offerDescription = new RTCSessionDescription(callData.offer);
-                    await pc.setRemoteDescription(offerDescription);
-
-                    const answerDescription = await pc.createAnswer();
-                    await pc.setLocalDescription(answerDescription);
-
-                    const answer = {
-                        type: answerDescription.type,
-                        sdp: answerDescription.sdp,
+                    pc.ontrack = (event) => {
+                        if (!remoteStream) remoteStream = new MediaStream();
+                        event.streams[0].getTracks().forEach((track) => {
+                            remoteStream.addTrack(track);
+                        });
+                        remoteAudio.srcObject = remoteStream; // Caller এর কথা শোনা যাবে
                     };
-                    
-                    // ডেটাবেসে Answer এবং status: "accepted" আপডেট করা
-                    await updateDoc(callDocRef, { answer, status: "accepted" });
-                }
 
-                // Caller-এর ICE Candidates রিসিভ করা
-                const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
-                onSnapshot(callerCandidatesCollection, (snapshot) => {
-                    snapshot.docChanges().forEach((change) => {
-                        if (change.type === "added") {
-                            const candidate = new RTCIceCandidate(change.doc.data());
-                            pc.addIceCandidate(candidate);
+                    // FIX: Watch connection state for Timer & Disconnects
+                    pc.onconnectionstatechange = () => {
+                        if (pc.connectionState === 'connected') {
+                            // কানেকশন হওয়ার পর টাইমার শুরু করা
+                            callStatusText.textContent = "CONNECTED";
+                            timerDisplay.style.display = 'block';
+                            let seconds = 0;
+                            clearInterval(timerInterval);
+                            timerInterval = setInterval(() => {
+                                seconds++;
+                                const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+                                const secs = String(seconds % 60).padStart(2, '0');
+                                timerDisplay.textContent = `${mins}:${secs}`;
+                            }, 1000);
+                        } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+                            terminateCall("idle");
                         }
-                    });
-                });
+                    };
 
-                // কানেকশন হওয়ার পর টাইমার শুরু করা
-                callStatusText.textContent = "CONNECTED";
-                timerDisplay.style.display = 'block';
-                let seconds = 0;
-                timerInterval = setInterval(() => {
-                    seconds++;
-                    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
-                    const secs = String(seconds % 60).padStart(2, '0');
-                    timerDisplay.textContent = `${mins}:${secs}`;
-                }, 1000);
+                    // রিসিভারের ICE Candidates ডেটাবেসে পাঠানো
+                    const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
+                    pc.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            addDoc(receiverCandidatesCollection, event.candidate.toJSON());
+                        }
+                    };
+
+                    // Caller-এর Offer ডেটাবেস থেকে পড়া এবং Answer তৈরি করা
+                    const callDoc = await getDoc(callDocRef);
+                    const callData = callDoc.data();
+                    
+                    if (callData.offer) {
+                        const offerDescription = new RTCSessionDescription(callData.offer);
+                        await pc.setRemoteDescription(offerDescription);
+
+                        const answerDescription = await pc.createAnswer();
+                        await pc.setLocalDescription(answerDescription);
+
+                        const answer = {
+                            type: answerDescription.type,
+                            sdp: answerDescription.sdp,
+                        };
+                        
+                        // ডেটাবেসে Answer এবং status: "accepted" আপডেট করা
+                        await updateDoc(callDocRef, { answer, status: "accepted" });
+                    }
+
+                    // Caller-এর ICE Candidates রিসিভ করা (With Duplicate Protection)
+                    const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
+                    onSnapshot(callerCandidatesCollection, (snapshot) => {
+                        snapshot.docChanges().forEach((change) => {
+                            if (change.type === "added") {
+                                const data = change.doc.data();
+                                if(data.candidate && !processedCandidates.has(data.candidate)) {
+                                    const candidate = new RTCIceCandidate(data);
+                                    pc.addIceCandidate(candidate).catch(e => console.error(e));
+                                    processedCandidates.add(data.candidate);
+                                }
+                            }
+                        });
+                    });
+
+                } catch (error) {
+                    console.error("WebRTC Error:", error);
+                    alert("Failed to establish connection. Check permissions.");
+                    terminateCall("idle");
+                }
             });
         });
     </script>
