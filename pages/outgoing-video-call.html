@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Outgoing Video Call</title>
+    
+        <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="BOND SR">
+
+    <link rel="apple-touch-icon" href="assets/splash/icon.png">
+
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16_Plus__iPhone_15_Pro_Max__iPhone_15_Plus__iPhone_14_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_16__iPhone_15_Pro__iPhone_15__iPhone_14_Pro_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_14_Plus__iPhone_13_Pro_Max__iPhone_12_Pro_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_13_mini__iPhone_12_mini__iPhone_11_Pro__iPhone_XS__iPhone_X_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11_Pro_Max__iPhone_XS_Max_portrait.png">
+    <link rel="apple-touch-startup-image" media="screen and (orientation: portrait)" href="assets/splash/iPhone_11__iPhone_XR_portrait.png">
+
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -173,6 +191,7 @@
             align-items: center;
             width: 100%;
             padding: 0 10px 20px;
+            transition: opacity 0.3s ease;
         }
 
         .btn-wrapper {
@@ -242,6 +261,41 @@
             height: 100%;
             object-fit: cover;
             background-color: #050505;
+        }
+
+        /* NEW: Remote Sync Indicators */
+        #remoteStatusOverlay {
+            position: absolute;
+            inset: 0;
+            background-color: #111;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #9ca3af;
+            z-index: 2;
+        }
+
+        #remoteStatusOverlay i {
+            font-size: 40px;
+            margin-bottom: 15px;
+            color: #4b5563;
+        }
+
+        #remoteMicMuted {
+            position: absolute;
+            top: 40px;
+            right: 20px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: none;
+            z-index: 3;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(10px);
         }
 
         .local-video-pip {
@@ -413,6 +467,13 @@
         
         <div class="remote-video-container">
             <video id="remoteVideo" autoplay playsinline></video>
+            <div id="remoteStatusOverlay">
+                <i class="fas fa-video-slash"></i>
+                <span>Partner paused video</span>
+            </div>
+            <div id="remoteMicMuted">
+                <i class="fas fa-microphone-slash"></i> Muted
+            </div>
         </div>
 
         <div class="local-video-pip">
@@ -460,7 +521,7 @@
         const OTHER_USER = "RUBINA";
         const callDocRef = doc(db, "calls", "currentCall");
 
-        // WebRTC Configuration (Google STUN Servers)
+        // WebRTC Configuration
         const servers = {
             iceServers: [
                 { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }
@@ -470,12 +531,31 @@
         let pc = new RTCPeerConnection(servers);
         let localStream = null;
         let remoteStream = new MediaStream();
+        const processedCandidates = new Set(); // Duplicate ICE protection
+
+        // ==========================================
+        // Audio Assets Setup & Cleanup Logic
+        // ==========================================
+        const dialTone = new Audio('assets/outgoing-call.mp3');
+        dialTone.loop = true;
+        const callEndedTone = new Audio('assets/call-ended.mp3');
+        const busyTone = new Audio('assets/busy-tone.mp3');
+
+        function stopAllTones() {
+            dialTone.pause();
+            dialTone.currentTime = 0;
+            callEndedTone.pause();
+            callEndedTone.currentTime = 0;
+            busyTone.pause();
+            busyTone.currentTime = 0;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             const callingWrapper = document.getElementById('callingWrapper');
             const morphContainer = document.getElementById('morphContainer');
             const cancelCallBtn = document.getElementById('cancelCallBtn');
             const callStatusText = document.getElementById('callStatusText');
+            const actionArea = document.querySelector('.action-area');
             
             const activeVideoContainer = document.getElementById('activeVideoContainer');
             const activeTimer = document.getElementById('activeTimer');
@@ -489,10 +569,18 @@
             const micIcon = document.getElementById('micIcon');
             const camIcon = document.getElementById('camIcon');
             const videoOffOverlay = document.getElementById('videoOffOverlay');
+            
+            const remoteStatusOverlay = document.getElementById('remoteStatusOverlay');
+            const remoteMicMuted = document.getElementById('remoteMicMuted');
 
             let callTimerInterval;
             let seconds = 0;
             let isCallAccepted = false;
+            let isEnding = false; // Prevent multiple clicks/events
+            let currentFacingMode = "user"; // Camera Flip State
+
+            // Start Dial Tone immediately
+            dialTone.play().catch(e => console.log("Audio autoplay blocked by browser", e));
 
             // ১. পেজ লোড হলেই কলিং স্ক্রিন বড় হবে
             setTimeout(() => {
@@ -500,31 +588,130 @@
             }, 200);
 
             // ==========================================
+            // FIX: Unified Call Termination & Cleanup Logic
+            // ==========================================
+            async function endCallProcess(reason = "cancel") {
+                if(isEnding) return;
+                isEnding = true;
+
+                clearInterval(callTimerInterval);
+
+                // Full stream and media cleanup + NEW: remoteVideo.pause()
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                if (remoteStream) {
+                    remoteStream.getTracks().forEach(track => track.stop());
+                    remoteStream = null;
+                }
+                if (remoteVideo) {
+                    remoteVideo.pause();
+                    remoteVideo.srcObject = null;
+                }
+                if (pc) {
+                    pc.close();
+                }
+
+                // Stop all playing tones
+                stopAllTones();
+
+                let activeTone = callEndedTone;
+                
+                // Set appropriate tone and text
+                if (reason === "busy") {
+                    activeTone = busyTone;
+                    callStatusText.textContent = "USER IS BUSY";
+                } else {
+                    if (isCallAccepted) {
+                        activeTimer.textContent = "ENDED";
+                        activeTimer.style.color = "#ef4444";
+                    } else {
+                        if (reason === "rejected") callStatusText.textContent = "CALL DECLINED";
+                        else callStatusText.textContent = "CANCELLED";
+                        callStatusText.style.color = "#ef4444";
+                    }
+                }
+
+                // Disable UI Interactions
+                if(actionArea) {
+                    actionArea.style.opacity = '0.3';
+                    actionArea.style.pointerEvents = 'none';
+                }
+                if(isCallAccepted) {
+                    hangupCallBtn.classList.add('disabled-state');
+                    hangupCallBtn.style.pointerEvents = 'none';
+                }
+
+                try {
+                    await updateDoc(callDocRef, { 
+                        status: "idle", 
+                        caller: "none", 
+                        receiver: "none", 
+                        type: "none" 
+                    });
+                } catch(err) { console.error(err); }
+
+                // Safe Navigation after audio ends
+                let isNavigated = false;
+                const goBack = () => {
+                    if(!isNavigated) {
+                        isNavigated = true;
+                        window.history.back();
+                    }
+                };
+
+                activeTone.play().then(() => {
+                    activeTone.onended = goBack;
+                    setTimeout(goBack, 5000); // Fallback timeout
+                }).catch(e => {
+                    console.log("Audio blocked", e);
+                    setTimeout(goBack, 1500);
+                });
+            }
+
+            cancelCallBtn.addEventListener('click', (e) => { 
+                e.stopPropagation(); 
+                endCallProcess("cancel"); 
+            });
+            hangupCallBtn.addEventListener('click', () => endCallProcess("cancel"));
+
+            // NEW: Window close / refresh handler
+            window.addEventListener('beforeunload', () => {
+                if (!isEnding) {
+                    updateDoc(callDocRef, { status: "ended" }).catch(e => console.error(e));
+                    endCallProcess("ended");
+                }
+            });
+
+            // ==========================================
             // WebRTC: Initialize Caller Setup
             // ==========================================
             async function setupWebRTC() {
-                // ১. Local Camera চালু করা
                 try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: true });
                     localVideo.srcObject = localStream;
 
-                    // ২. Local Stream-এর ট্র্যাকগুলো PeerConnection-এ অ্যাড করা
                     localStream.getTracks().forEach((track) => {
                         pc.addTrack(track, localStream);
                     });
                 } catch (error) {
-                    console.error("Camera access failed:", error);
+                    console.error("Camera/Mic access failed:", error);
                 }
 
-                // ৩. Remote Stream রিসিভ করার জন্য প্রস্তুত থাকা
                 pc.ontrack = (event) => {
                     event.streams[0].getTracks().forEach((track) => {
                         remoteStream.addTrack(track);
                     });
-                    remoteVideo.srcObject = remoteStream; // অপরজনের ভিডিও প্লে হবে
+                    remoteVideo.srcObject = remoteStream; 
                 };
 
-                // ৪. ICE Candidates কালেক্ট করা এবং ডেটাবেসে পাঠানো
+                // NEW: Monitor connection failure
+                pc.onconnectionstatechange = () => {
+                    if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+                        endCallProcess("ended");
+                    }
+                };
+
                 const callerCandidatesCollection = collection(callDocRef, "callerCandidates");
                 pc.onicecandidate = (event) => {
                     if (event.candidate) {
@@ -532,7 +719,6 @@
                     }
                 };
 
-                // ৫. Offer (কলের রিকোয়েস্ট) তৈরি করে ডেটাবেসে পাঠানো
                 const offerDescription = await pc.createOffer();
                 await pc.setLocalDescription(offerDescription);
                 
@@ -543,17 +729,16 @@
                 await setDoc(callDocRef, { offer }, { merge: true });
             }
 
-            // WebRTC স্টার্ট করা
             setupWebRTC();
 
             // ==========================================
             // Firebase Listener: অপরজন কল ধরলে বা রিজেক্ট করলে
             // ==========================================
             onSnapshot(callDocRef, (snap) => {
-                if (!snap.exists()) return;
+                if (!snap.exists() || isEnding) return;
                 const call = snap.data();
 
-                // যদি Answer পাওয়া যায় (মানে অপরজন কল রিসিভ করেছে)
+                // Answer পাওয়া গেলে
                 if (!pc.currentRemoteDescription && call.answer) {
                     const answerDescription = new RTCSessionDescription(call.answer);
                     pc.setRemoteDescription(answerDescription);
@@ -564,7 +749,9 @@
                     callStatusText.textContent = "CONNECTED";
                     callStatusText.style.color = "#ffffff";
                     
-                    // কলিং স্ক্রিন সরিয়ে লাইভ ভিডিও স্ক্রিন আনা
+                    // Premium Feature: Stop Dial Tone with ~150ms delay
+                    setTimeout(() => { stopAllTones(); }, 150);
+                    
                     callingWrapper.style.opacity = '0';
                     setTimeout(() => {
                         callingWrapper.style.display = 'none';
@@ -572,8 +759,6 @@
                         
                         setTimeout(() => {
                             activeVideoContainer.style.opacity = '1';
-                            
-                            // টাইমার শুরু
                             seconds = 0;
                             callTimerInterval = setInterval(() => {
                                 seconds++;
@@ -581,92 +766,114 @@
                                 const secs = String(seconds % 60).padStart(2, '0');
                                 activeTimer.textContent = `${mins}:${secs}`;
                             }, 1000);
-
                         }, 50);
                     }, 400);
                 } 
-                else if (call.status === "rejected" || call.status === "idle") {
-                    terminateCall(call.status);
+                else if (call.status === "rejected") {
+                    endCallProcess("rejected");
+                }
+                else if (call.status === "busy") {
+                    endCallProcess("busy");
+                }
+                else if (call.status === "idle" && isCallAccepted) {
+                    endCallProcess("ended");
+                }
+
+                // NEW: Sync Remote Camera and Mic Overlays
+                if (call.receiverCamOff) {
+                    remoteStatusOverlay.style.display = 'flex';
+                } else {
+                    remoteStatusOverlay.style.display = 'none';
+                }
+
+                if (call.receiverMicOff) {
+                    remoteMicMuted.style.display = 'flex';
+                } else {
+                    remoteMicMuted.style.display = 'none';
                 }
             });
 
-            // ৬. রিসিভারের পাঠানো ICE Candidates রিসিভ করা
             const receiverCandidatesCollection = collection(callDocRef, "receiverCandidates");
             onSnapshot(receiverCandidatesCollection, (snapshot) => {
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
-                        const candidate = new RTCIceCandidate(change.doc.data());
-                        pc.addIceCandidate(candidate);
+                        const data = change.doc.data();
+                        if(data.candidate && !processedCandidates.has(data.candidate)) {
+                            const candidate = new RTCIceCandidate(data);
+                            pc.addIceCandidate(candidate).catch(e => console.log(e));
+                            processedCandidates.add(data.candidate);
+                        }
                     }
                 });
             });
 
             // ==========================================
-            // Call Termination Logic
-            // ==========================================
-            function terminateCall(statusType = "idle") {
-                clearInterval(callTimerInterval);
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                }
-                if (pc) {
-                    pc.close();
-                }
-                
-                if(!isCallAccepted) {
-                    callStatusText.textContent = statusType === "rejected" ? "CALL DECLINED" : "CALL ENDED";
-                    callStatusText.style.color = "#ef4444";
-                } else {
-                    activeTimer.textContent = "ENDED";
-                    activeTimer.style.color = "#ef4444";
-                }
-
-                setTimeout(() => { 
-                    window.history.back(); 
-                }, 1500);
-            }
-
-            async function endCallProcess() {
-                terminateCall("idle");
-                try {
-                    await updateDoc(callDocRef, { 
-                        status: "idle", 
-                        caller: "none", 
-                        receiver: "none", 
-                        type: "none" 
-                    });
-                } catch(err) { console.error(err); }
-            }
-
-            cancelCallBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                endCallProcess(); 
-            });
-            hangupCallBtn.addEventListener('click', endCallProcess);
-
-            // ==========================================
-            // Media Controls (Mic & Cam)
+            // Media Controls (Mic & Cam Sync)
             // ==========================================
             let isMuted = false;
-            micBtn.addEventListener('click', () => {
+            micBtn.addEventListener('click', async () => {
                 isMuted = !isMuted;
                 if(localStream) localStream.getAudioTracks()[0].enabled = !isMuted;
                 micBtn.classList.toggle('disabled-state');
                 micIcon.className = isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+                
+                // NEW: Sync Mic State to Firestore
+                await updateDoc(callDocRef, { callerMicOff: isMuted }).catch(e => console.error(e));
             });
 
             let isCamOff = false;
-            camBtn.addEventListener('click', () => {
+            camBtn.addEventListener('click', async () => {
                 isCamOff = !isCamOff;
                 if(localStream) localStream.getVideoTracks()[0].enabled = !isCamOff;
                 camBtn.classList.toggle('disabled-state');
                 camIcon.className = isCamOff ? 'fas fa-video-slash' : 'fas fa-video';
                 videoOffOverlay.style.display = isCamOff ? 'flex' : 'none';
+                
+                // NEW: Sync Cam State to Firestore
+                await updateDoc(callDocRef, { callerCamOff: isCamOff }).catch(e => console.error(e));
             });
 
-            flipBtn.addEventListener('click', () => {
+            // ==========================================
+            // FIX: Real Camera Flip logic via replaceTrack()
+            // ==========================================
+            flipBtn.addEventListener('click', async () => {
+                // UI Animation
                 flipBtn.style.transform = 'rotate(180deg)';
                 setTimeout(() => { flipBtn.style.transform = 'rotate(0deg)'; }, 300);
+
+                const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
+                
+                try {
+                    // Fetch new video track
+                    const newStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: newFacingMode }, 
+                        audio: false // audio track remains unchanged
+                    });
+                    const newVideoTrack = newStream.getVideoTracks()[0];
+                    
+                    if (localStream) {
+                        const oldVideoTrack = localStream.getVideoTracks()[0];
+                        if(oldVideoTrack) oldVideoTrack.stop(); // Stop old camera hardware
+                        localStream.removeTrack(oldVideoTrack);
+                        localStream.addTrack(newVideoTrack);
+                    }
+
+                    currentFacingMode = newFacingMode;
+                    localVideo.srcObject = localStream;
+                    localVideo.style.transform = currentFacingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+
+                    // Send the new track to the remote peer
+                    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) {
+                        sender.replaceTrack(newVideoTrack).catch(e => console.error("Track replace error:", e));
+                    }
+
+                    // Respect current camera off state
+                    if (isCamOff) newVideoTrack.enabled = false;
+
+                } catch (err) {
+                    console.error("Camera flip failed:", err);
+                }
             });
 
             // Load Partner Profile
