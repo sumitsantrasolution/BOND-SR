@@ -417,6 +417,7 @@ body::after {
                 status: "ringing",
                 createdAt: serverTimestamp()
             }, { merge: true });
+        window.location.href = "outgoing-audio-call.html";
         } catch (error) {
             console.error("Audio Call Error:", error);
         }
@@ -433,6 +434,7 @@ body::after {
                 status: "ringing",
                 createdAt: serverTimestamp()
             }, { merge: true });
+        window.location.href = "outgoing-video-call.html";
         } catch (error) {
             console.error("Video Call Error:", error);
         }
