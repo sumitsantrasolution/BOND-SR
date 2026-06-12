@@ -393,8 +393,13 @@ body::after {
     const micBtn = document.getElementById('micBtn');
 
     let selectedFile = null;
-    let CURRENT_USER = null;
-    const OTHER_USER = "RUBINA";
+    let CURRENT_USER = sessionStorage.getItem("CURRENT_USER");
+    
+    if (!CURRENT_USER) {
+        window.location.href = "index-PWA.html";
+    }
+    
+    const OTHER_USER = (CURRENT_USER === "SUMIT") ? "RUBINA" : "SUMIT";
     let lastRenderedDate = ""; 
 
     let mediaRecorder;
@@ -669,7 +674,7 @@ body::after {
 
     onAuthStateChanged(auth, (user) => {
         if (user) {
-            CURRENT_USER = user.uid; CURRENT_USER = "SUMIT";
+            if (!CURRENT_USER) return;
             initChat(); 
             updateUserPresence(true);
             
@@ -725,8 +730,20 @@ body::after {
             updateUserPresence(false);
         }
     });
+    
+    function releaseIdentity() {
+        if (CURRENT_USER) {
+            const fieldToUpdate = CURRENT_USER === "SUMIT" ? "sumitTaken" : "rubinaTaken";
+            const identityRef = doc(db, "users", "identity");
+            updateDoc(identityRef, { [fieldToUpdate]: false }).catch(err => console.error(err));
+        }
+    }
+
+    window.addEventListener("pagehide", releaseIdentity);
+
     window.addEventListener("beforeunload", () => {
         updateUserPresence(false);
+        releaseIdentity();
     });
 
     async function sendMessage(audioFile = null) { 
